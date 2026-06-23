@@ -1,0 +1,8 @@
+# clasp (Apps Script CLI)
+.clasp.json
+.clasprc.json
+
+# OS / editor
+.DS_Store
+*.log
+node_modules/
