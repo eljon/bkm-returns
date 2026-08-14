@@ -31,7 +31,9 @@ service cloud.firestore {
   }
 
   function isValidReturn(data) {
-    return data.date is string
+    return data.txnNo is string
+      && data.txnNo.size() > 0
+      && data.date is string
       && data.date.size() > 0
       && data.customer is string
       && data.customer.size() > 0

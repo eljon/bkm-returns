@@ -89,6 +89,49 @@
 
     input[type="date"] { color-scheme: light; min-height: 52px; }
 
+    /* Items section */
+    .section-label {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 6px 4px -4px;
+    }
+    #items { display: flex; flex-direction: column; gap: 12px; }
+    .item-card {
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .item-head { display: flex; align-items: center; justify-content: space-between; }
+    .item-num { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+    .remove-item {
+      background: none;
+      border: none;
+      color: var(--err);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      padding: 4px 6px;
+    }
+    #items.single .remove-item { display: none; }
+
+    .add-item {
+      background: none;
+      border: 1.5px dashed var(--border);
+      color: var(--accent);
+      border-radius: var(--radius);
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 52px;
+    }
+    .add-item:active { background: #eef2f7; }
+
     /* Good / Defective segmented picker */
     .segment {
       display: grid;
@@ -100,14 +143,14 @@
       border: 1.5px solid var(--border);
       color: var(--text);
       border-radius: var(--radius);
-      padding: 15px;
-      font-size: 1.05rem;
+      padding: 14px;
+      font-size: 1.02rem;
       font-weight: 600;
       cursor: pointer;
-      min-height: 54px;
+      min-height: 52px;
       transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     }
-    .seg-btn:active { background: #f1f5f9; }
+    .seg-btn:active { background: #eef2f7; }
     .seg-btn.active[data-value="Good"] {
       background: var(--ok); border-color: var(--ok); color: #fff;
     }
@@ -133,7 +176,7 @@
       cursor: pointer;
       user-select: none;
     }
-    .qty button:active { background: #f1f5f9; }
+    .qty button:active { background: #eef2f7; }
     .qty input { text-align: center; }
     .qty input::-webkit-outer-spin-button,
     .qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -175,8 +218,8 @@
       color: var(--muted);
       margin: 0 0 10px 4px;
     }
-    .recent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-    .recent li {
+    .recent > ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .recent .txn {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -184,9 +227,12 @@
     }
     .recent .r-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
     .recent .r-cust { font-weight: 700; }
-    .recent .r-qty { color: var(--accent); font-weight: 700; white-space: nowrap; }
-    .recent .r-item { color: var(--text); font-size: 0.95rem; margin-top: 2px; }
-    .recent .r-meta { color: var(--muted); font-size: 0.8rem; margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .recent .r-count { color: var(--muted); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+    .r-lines { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+    .r-line { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 0.95rem; }
+    .r-line-right { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .r-qty { color: var(--accent); font-weight: 700; }
+    .recent .r-meta { color: var(--muted); font-size: 0.78rem; margin-top: 8px; }
     .badge {
       display: inline-block;
       padding: 2px 9px;
@@ -218,8 +264,6 @@
     .toast.show { transform: translateY(0); }
     .toast.ok { background: var(--ok); color: #fff; }
     .toast.err { background: var(--err); color: #fff; }
-
-    .hint { font-size: 0.8rem; color: var(--muted); margin-top: -2px; }
 
     /* Config banner */
     .banner {
@@ -263,36 +307,16 @@
       </div>
 
       <div class="field">
-        <label for="item">Item <span class="req">*</span></label>
-        <input type="text" id="item" name="item"
-               placeholder="e.g. Coffee Mug" autocapitalize="sentences"
-               enterkeyhint="next" required>
-      </div>
-
-      <div class="field">
-        <label>Condition <span class="req">*</span></label>
-        <div class="segment" id="condition" role="group" aria-label="Condition">
-          <button type="button" class="seg-btn" data-value="Good" aria-pressed="false">Good</button>
-          <button type="button" class="seg-btn" data-value="Defective" aria-pressed="false">Defective</button>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="qty">QTY <span class="req">*</span></label>
-        <div class="qty">
-          <button type="button" id="qtyMinus" aria-label="Decrease quantity">−</button>
-          <input type="number" id="qty" name="qty" inputmode="numeric"
-                 min="1" step="1" value="1" required>
-          <button type="button" id="qtyPlus" aria-label="Increase quantity">+</button>
-        </div>
-      </div>
-
-      <div class="field">
         <label for="drNumber">DR # <span class="opt">(optional)</span></label>
         <input type="text" id="drNumber" name="drNumber"
                placeholder="Delivery receipt number" inputmode="text"
-               enterkeyhint="done">
+               enterkeyhint="next">
       </div>
+
+      <div class="section-label">Items</div>
+      <div id="items"></div>
+
+      <button type="button" class="add-item" id="addItem">+ Add another item</button>
 
       <button type="submit" class="submit" id="submitBtn">Save return</button>
     </form>
@@ -306,6 +330,40 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <!-- Template for one item line -->
+  <template id="itemTemplate">
+    <div class="item-card">
+      <div class="item-head">
+        <span class="item-num">Item 1</span>
+        <button type="button" class="remove-item">Remove</button>
+      </div>
+
+      <div class="field">
+        <label>Item <span class="req">*</span></label>
+        <input type="text" class="i-item"
+               placeholder="e.g. Coffee Mug" autocapitalize="sentences"
+               enterkeyhint="next">
+      </div>
+
+      <div class="field">
+        <label>Condition <span class="req">*</span></label>
+        <div class="segment" role="group" aria-label="Condition">
+          <button type="button" class="seg-btn" data-value="Good" aria-pressed="false">Good</button>
+          <button type="button" class="seg-btn" data-value="Defective" aria-pressed="false">Defective</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>QTY <span class="req">*</span></label>
+        <div class="qty">
+          <button type="button" class="qty-minus" aria-label="Decrease quantity">−</button>
+          <input type="number" class="i-qty" inputmode="numeric" min="1" step="1" value="1">
+          <button type="button" class="qty-plus" aria-label="Increase quantity">+</button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <script type="module" src="app.js"></script>
 </body>

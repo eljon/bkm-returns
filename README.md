@@ -39,17 +39,24 @@ with Firestore as the database.
 
 ## Data model
 
-Documents are stored in a single `returns` collection:
+A return is one **transaction** that can hold several items. Each item is
+stored as its own document in the `returns` collection, and all items from the
+same transaction share a `txnNo`:
 
 ```
 returns/{autoId}
-  date:      "2026-08-14"     // string, YYYY-MM-DD
-  customer:  "Acme Corp"       // string
-  item:      "Coffee Mug"      // string
-  qty:       3                 // integer >= 1
-  drNumber:  "DR-1024"         // string ("" when omitted)
+  txnNo:     "R-260814-143052-A3"  // string, shared by items in one return
+  date:      "2026-08-14"          // string, YYYY-MM-DD
+  customer:  "Acme Corp"            // string
+  item:      "Coffee Mug"           // string
+  condition: "Good"                 // "Good" | "Defective"
+  qty:       3                      // integer >= 1
+  drNumber:  "DR-1024"              // string ("" when omitted)
   createdAt: <server timestamp>
 ```
+
+The **Recent returns** list groups documents by `txnNo` so each transaction
+shows as one card with its line items.
 
 ## Setup
 
