@@ -339,8 +339,20 @@ function condBadge(c) {
   return `<span class="badge ${c === "Defective" ? "bad" : "good"}">${escapeHtml(c)}</span>`;
 }
 
-function renderLines(g) {
-  return g.items
+// Split items into [condition, items] groups: Good first, then Defective.
+function condGroups(items) {
+  const out = [];
+  for (const c of ["Good", "Defective"]) {
+    const arr = items.filter((it) => it.condition === c);
+    if (arr.length) out.push([c, arr]);
+  }
+  const others = items.filter((it) => it.condition !== "Good" && it.condition !== "Defective");
+  if (others.length) out.push(["Other", others]);
+  return out;
+}
+
+function renderLines(items) {
+  return items
     .map((it) => {
       const meta = [it.supplier || "", it.sr ? "SR " + it.sr : ""].filter(Boolean).join(" · ");
       return `<li class="r-line">
@@ -348,7 +360,7 @@ function renderLines(g) {
              <span class="r-line-item">${escapeHtml(it.item)}</span>
              <span class="r-line-sup">${escapeHtml(meta)}</span>
            </div>
-           <span class="r-line-right">${condBadge(it.condition)}<span class="r-qty">×${escapeHtml(it.qty)}</span></span>
+           <span class="r-line-right"><span class="r-qty">×${escapeHtml(it.qty)}</span></span>
          </li>`;
     })
     .join("");
@@ -358,12 +370,21 @@ function renderTxnCard(g) {
   const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
   const txn = g.txnNo ? ` · ${escapeHtml(g.txnNo)}` : "";
   const n = g.items.length;
+  const body = condGroups(g.items)
+    .map(
+      ([cond, arr]) =>
+        `<div class="cond-group cond-${cond.toLowerCase()}">
+           <div class="cond-head">${escapeHtml(cond)}</div>
+           <ul class="r-lines">${renderLines(arr)}</ul>
+         </div>`
+    )
+    .join("");
   return `<li class="txn">
      <div class="r-top">
        <span class="r-cust">${escapeHtml(g.customer)}</span>
        <span class="r-count">${n} item${n > 1 ? "s" : ""}</span>
      </div>
-     <ul class="r-lines">${renderLines(g)}</ul>
+     ${body}
      <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${txn}</div>
    </li>`;
 }
@@ -411,14 +432,13 @@ function srCard(card, i) {
              <span class="sr-item-text">${escapeHtml(it.item)}
                <span class="muted">${escapeHtml(it.supplier || "")} · ×${escapeHtml(it.qty)}</span>
              </span>
-             ${condBadge(it.condition)}
            </label>
          </li>`
     )
     .join("");
   return `<li class="txn">
      <div class="r-top">
-       <span class="r-cust">${escapeHtml(g.customer)}</span>
+       <span class="r-cust">${escapeHtml(g.customer)} ${condBadge(card.condition)}</span>
        <span class="r-count">${escapeHtml(g.txnNo || "")}</span>
      </div>
      <ul class="sr-items">${rows}</ul>
@@ -432,11 +452,16 @@ function srCard(card, i) {
 }
 
 function renderSr() {
+  // A transaction with both Good and Defective pending items appears as two
+  // separate cards, so each condition can get its own SR number.
   srPending = [];
   for (const g of allTxns) {
     if (g.drNumber) continue; // a DR covers the whole transaction
-    const pendingItems = g.items.filter((it) => !it.sr);
-    if (pendingItems.length) srPending.push({ g, pendingItems });
+    const pending = g.items.filter((it) => !it.sr);
+    if (!pending.length) continue;
+    for (const [cond, arr] of condGroups(pending)) {
+      srPending.push({ g, condition: cond, pendingItems: arr });
+    }
   }
   if (!srPending.length) {
     srList.innerHTML = '<li class="empty">All caught up — every item has an SR or a DR.</li>';

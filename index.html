@@ -261,7 +261,12 @@
     .r-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
     .r-cust { font-weight: 700; }
     .r-count { color: var(--muted); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
-    .r-lines { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+    .cond-group + .cond-group { margin-top: 4px; }
+    .cond-head { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; margin: 9px 0 0; }
+    .cond-good .cond-head { color: #166534; }
+    .cond-defective .cond-head { color: #991b1b; }
+    .cond-other .cond-head { color: var(--muted); }
+    .r-lines { list-style: none; margin: 3px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
     .r-line { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 0.95rem; }
     .r-line-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .r-line-sup { color: var(--muted); font-size: 0.78rem; }
@@ -369,7 +374,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v3.0</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v3.1</span></h1>
     </header>
 
     <nav class="tabs">
@@ -480,7 +485,7 @@
   </template>
 
   <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
-  <script type="module" src="app.js?v=3.0"></script>
+  <script type="module" src="app.js?v=3.1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
