@@ -32,6 +32,7 @@ const itemsWrap = $("items");
 const addItemBtn = $("addItem");
 const itemTemplate = $("itemTemplate");
 const customerInput = $("customer");
+const searchInput = $("search");
 
 // ---- Default the date to today (local) --------------------------------------
 (function setToday() {
@@ -314,7 +315,11 @@ loadNames(customers);
 loadNames(items);
 loadNames(suppliers);
 
-// ---- History (grouped by transaction) ---------------------------------------
+// ---- History (grouped by transaction, searchable) ---------------------------
+const HISTORY_MAX = 1000; // documents pulled into memory for the History tab
+const HISTORY_SHOW = 50; // transactions rendered at once
+let allTxns = []; // grouped transactions, newest first (in memory)
+
 function condBadge(c) {
   if (!c) return "";
   return `<span class="badge ${c === "Defective" ? "bad" : "good"}">${escapeHtml(c)}</span>`;
@@ -322,13 +327,15 @@ function condBadge(c) {
 
 function renderTxnCard(g) {
   const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
-  const sup = g.supplier ? ` · ${escapeHtml(g.supplier)}` : "";
   const txn = g.txnNo ? ` · ${escapeHtml(g.txnNo)}` : "";
   const lines = g.items
     .map(
       (it) =>
         `<li class="r-line">
-           <span class="r-line-item">${escapeHtml(it.item)}</span>
+           <div class="r-line-main">
+             <span class="r-line-item">${escapeHtml(it.item)}</span>
+             <span class="r-line-sup">${escapeHtml(it.supplier || "")}</span>
+           </div>
            <span class="r-line-right">${condBadge(it.condition)}<span class="r-qty">×${escapeHtml(it.qty)}</span></span>
          </li>`
     )
@@ -340,21 +347,48 @@ function renderTxnCard(g) {
        <span class="r-count">${n} item${n > 1 ? "s" : ""}</span>
      </div>
      <ul class="r-lines">${lines}</ul>
-     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${sup}${dr}${txn}</div>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${txn}</div>
    </li>`;
 }
+
+// Does a transaction match the search query (customer / supplier / item / DR / #)?
+function txnMatches(g, q) {
+  if (g.customer && g.customer.toLowerCase().includes(q)) return true;
+  if (g.drNumber && g.drNumber.toLowerCase().includes(q)) return true;
+  if (g.txnNo && g.txnNo.toLowerCase().includes(q)) return true;
+  return g.items.some(
+    (it) =>
+      (it.item && it.item.toLowerCase().includes(q)) ||
+      (it.supplier && it.supplier.toLowerCase().includes(q))
+  );
+}
+
+// Render (from memory) applying the current search box — runs on each keystroke.
+function renderHistory() {
+  const q = (searchInput.value || "").trim().toLowerCase();
+  const list = q ? allTxns.filter((g) => txnMatches(g, q)) : allTxns;
+
+  if (!list.length) {
+    recentList.innerHTML = `<li class="empty">${q ? "No matching returns." : "No returns logged yet."}</li>`;
+    return;
+  }
+  const shown = list.slice(0, HISTORY_SHOW);
+  let html = shown.map(renderTxnCard).join("");
+  if (list.length > shown.length) {
+    html += `<li class="empty">Showing first ${shown.length} of ${list.length} — refine your search.</li>`;
+  }
+  recentList.innerHTML = html;
+}
+
+searchInput.addEventListener("input", renderHistory);
 
 async function loadRecent() {
   if (!db) return;
   recentList.innerHTML = '<li class="empty">Loading…</li>';
   try {
     const snap = await getDocs(
-      query(collection(db, RETURNS), orderBy("createdAt", "desc"), limit(60))
+      query(collection(db, RETURNS), orderBy("createdAt", "desc"), limit(HISTORY_MAX))
     );
-    if (snap.empty) {
-      recentList.innerHTML = '<li class="empty">No returns logged yet.</li>';
-      return;
-    }
     const groups = new Map();
     snap.forEach((docSnap) => {
       const r = docSnap.data();
@@ -363,15 +397,15 @@ async function loadRecent() {
         groups.set(key, {
           txnNo: r.txnNo || "",
           customer: r.customer,
-          supplier: r.supplier || "",
           date: r.date,
           drNumber: r.drNumber,
           items: [],
         });
       }
-      groups.get(key).items.push({ item: r.item, condition: r.condition, qty: r.qty });
+      groups.get(key).items.push({ item: r.item, supplier: r.supplier || "", condition: r.condition, qty: r.qty });
     });
-    recentList.innerHTML = [...groups.values()].slice(0, 15).map(renderTxnCard).join("");
+    allTxns = [...groups.values()];
+    renderHistory();
   } catch (err) {
     console.error(err);
     recentList.innerHTML = '<li class="empty">Could not load recent returns.</li>';
@@ -454,8 +488,22 @@ form.addEventListener("submit", async (e) => {
       rememberName(suppliers, it.supplier);
     });
 
+    // Keep History current without another read: prepend the new transaction.
+    allTxns.unshift({
+      txnNo,
+      customer,
+      date,
+      drNumber,
+      items: lineItems.map((it) => ({
+        item: it.item,
+        supplier: it.supplier,
+        condition: it.condition,
+        qty: it.qty,
+      })),
+    });
+    renderHistory();
+
     resetForm();
-    loadRecent();
   } catch (err) {
     console.error(err);
     const msg =

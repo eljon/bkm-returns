@@ -270,6 +270,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* History list */
+    #search { margin-bottom: 12px; }
     #recentList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
     .txn {
       background: var(--card);
@@ -280,8 +281,10 @@
     .r-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
     .r-cust { font-weight: 700; }
     .r-count { color: var(--muted); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
-    .r-lines { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+    .r-lines { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
     .r-line { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 0.95rem; }
+    .r-line-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .r-line-sup { color: var(--muted); font-size: 0.78rem; }
     .r-line-right { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
     .r-qty { color: var(--accent); font-weight: 700; }
     .r-meta { color: var(--muted); font-size: 0.78rem; margin-top: 8px; }
@@ -336,7 +339,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v1.9</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v2.0</span></h1>
     </header>
 
     <nav class="tabs">
@@ -383,6 +386,8 @@
 
     <!-- HISTORY TAB -->
     <section id="tab-history" class="tab-panel hidden">
+      <input type="text" id="search" placeholder="Search customer, supplier, item…"
+             autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
       <ul id="recentList">
         <li class="empty" id="recentEmpty">Loading…</li>
       </ul>
