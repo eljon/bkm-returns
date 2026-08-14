@@ -21,6 +21,8 @@
       --err: #dc2626;
       --radius: 14px;
       --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+      --grad: linear-gradient(135deg, #22d3ee 0%, #6366f1 55%, #a855f7 100%);
+      --grad-shadow: 0 10px 22px rgba(124, 92, 246, 0.4);
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -85,8 +87,8 @@
     }
     .tab.active {
       color: #fff;
-      background: linear-gradient(180deg, var(--accent-2), var(--accent));
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      background: var(--grad);
+      box-shadow: 0 4px 12px rgba(124, 92, 246, 0.35);
     }
 
     form { display: flex; flex-direction: column; gap: 16px; }
@@ -172,7 +174,7 @@
     #items.single .remove-item { display: none; }
 
     .add-item {
-      border-radius: var(--radius);
+      border-radius: 999px;
       padding: 14px;
       font-size: 1rem;
       font-weight: 600;
@@ -200,10 +202,12 @@
     }
     .seg-btn:active { background: #eef2f7; }
     .seg-btn.active[data-value="Good"] {
-      background: linear-gradient(180deg, #22c55e, var(--ok)); color: #fff; border-color: transparent;
+      background: linear-gradient(135deg, #34d399, #10b981); color: #fff; border-color: transparent;
+      box-shadow: 0 6px 14px rgba(16, 185, 129, 0.32);
     }
     .seg-btn.active[data-value="Defective"] {
-      background: linear-gradient(180deg, #f87171, var(--err)); color: #fff; border-color: transparent;
+      background: linear-gradient(135deg, #fb7185, #ef4444); color: #fff; border-color: transparent;
+      box-shadow: 0 6px 14px rgba(239, 68, 68, 0.32);
     }
 
     /* Quantity stepper */
@@ -229,17 +233,18 @@
       margin-top: 4px;
       color: #fff;
       border: none;
-      border-radius: var(--radius);
-      padding: 17px;
+      border-radius: 999px;
+      padding: 17px 24px;
       font-size: 1.1rem;
       font-weight: 700;
+      letter-spacing: 0.3px;
       cursor: pointer;
       min-height: 56px;
-      background: linear-gradient(180deg, var(--accent-2), var(--accent));
-      box-shadow: 0 6px 16px rgba(2, 132, 199, 0.3);
-      transition: filter 0.15s ease, opacity 0.15s ease;
+      background: var(--grad);
+      box-shadow: var(--grad-shadow);
+      transition: filter 0.15s ease, transform 0.06s ease, opacity 0.15s ease;
     }
-    .submit:active { filter: brightness(0.94); }
+    .submit:active { filter: brightness(0.96); transform: translateY(1px); }
     .submit:disabled { opacity: 0.65; cursor: default; }
 
     .spinner {
@@ -303,7 +308,7 @@
       display: inline-block;
     }
     .sr-check:checked + .sr-box {
-      background: linear-gradient(180deg, var(--accent-2), var(--accent));
+      background: var(--grad);
       border-color: transparent;
     }
     .sr-check:checked + .sr-box::after {
@@ -321,17 +326,18 @@
     .sr-save {
       color: #fff;
       border: none;
-      border-radius: var(--radius);
-      padding: 0 20px;
+      border-radius: 999px;
+      padding: 0 24px;
       font-size: 1rem;
       font-weight: 700;
+      letter-spacing: 0.3px;
       cursor: pointer;
       min-height: 52px;
       font-family: inherit;
-      background: linear-gradient(180deg, var(--accent-2), var(--accent));
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      background: var(--grad);
+      box-shadow: var(--grad-shadow);
     }
-    .sr-save:active { filter: brightness(0.94); }
+    .sr-save:active { filter: brightness(0.96); }
     .sr-save:disabled { opacity: 0.65; }
 
     /* Toast */
@@ -374,7 +380,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v3.1</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v3.2</span></h1>
     </header>
 
     <nav class="tabs">
@@ -485,7 +491,7 @@
   </template>
 
   <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
-  <script type="module" src="app.js?v=3.1"></script>
+  <script type="module" src="app.js?v=3.2"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
