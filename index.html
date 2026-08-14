@@ -40,7 +40,7 @@
       min-height: 100vh;
     }
 
-    header { padding: 8px 4px 18px; }
+    header { padding: 8px 4px 14px; }
     header h1 {
       margin: 0;
       font-size: 1.4rem;
@@ -55,11 +55,30 @@
       letter-spacing: 0;
       margin-left: 4px;
     }
-    header p {
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 0.9rem;
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 5px;
+      margin-bottom: 18px;
     }
+    .tab {
+      flex: 1;
+      background: none;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .tab.active { background: var(--accent); color: #fff; }
 
     form {
       display: flex;
@@ -75,7 +94,6 @@
       color: var(--muted);
     }
     label .req { color: var(--accent); }
-    label .opt { color: var(--muted); font-weight: 500; }
 
     input[type="text"],
     input[type="date"],
@@ -94,10 +112,11 @@
       appearance: none;
     }
     input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--muted); opacity: 1; }
 
     input[type="date"] { color-scheme: light; min-height: 52px; }
 
-    /* Customer autocomplete */
+    /* Autocomplete (customer / item / supplier) */
     .combo { position: relative; }
     .suggest {
       position: absolute;
@@ -250,29 +269,22 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Recent returns list */
-    .recent { margin-top: 30px; }
-    .recent h2 {
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--muted);
-      margin: 0 0 10px 4px;
-    }
-    .recent > ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-    .recent .txn {
+    /* History list */
+    #recentList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .txn {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 12px 14px;
     }
-    .recent .r-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-    .recent .r-cust { font-weight: 700; }
-    .recent .r-count { color: var(--muted); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+    .r-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+    .r-cust { font-weight: 700; }
+    .r-count { color: var(--muted); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
     .r-lines { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
     .r-line { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 0.95rem; }
     .r-line-right { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
     .r-qty { color: var(--accent); font-weight: 700; }
-    .recent .r-meta { color: var(--muted); font-size: 0.78rem; margin-top: 8px; }
+    .r-meta { color: var(--muted); font-size: 0.78rem; margin-top: 8px; }
     .badge {
       display: inline-block;
       padding: 2px 9px;
@@ -283,7 +295,7 @@
     }
     .badge.good { background: #dcfce7; color: #166534; }
     .badge.bad { background: #fee2e2; color: #991b1b; }
-    .recent .empty { color: var(--muted); font-size: 0.9rem; padding: 4px; }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 4px; }
 
     /* Toast */
     .toast {
@@ -324,49 +336,63 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v1.7</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v1.8</span></h1>
     </header>
+
+    <nav class="tabs">
+      <button type="button" class="tab active" data-tab="input">Input</button>
+      <button type="button" class="tab" data-tab="history">History</button>
+    </nav>
 
     <div class="banner hidden" id="configBanner">
       Firebase isn’t configured yet. Edit <code>firebase-config.js</code>
       with your project’s config to start saving returns.
     </div>
 
-    <form id="form" autocomplete="off">
-      <div class="field">
-        <label for="date">Date <span class="req">*</span></label>
-        <input type="date" id="date" name="date" required>
-      </div>
-
-      <div class="field">
-        <label for="customer">Customer <span class="req">*</span></label>
-        <div class="combo">
-          <input type="text" id="customer" name="customer"
-                 placeholder="Start typing a name…" autocapitalize="characters"
-                 autocomplete="off" autocorrect="off" spellcheck="false"
-                 role="combobox" aria-autocomplete="list" aria-expanded="false"
-                 aria-controls="custSuggest" enterkeyhint="next" required>
-          <ul class="suggest" id="custSuggest" role="listbox" hidden></ul>
+    <!-- INPUT TAB -->
+    <section id="tab-input" class="tab-panel">
+      <form id="form" autocomplete="off">
+        <div class="field">
+          <label for="date">Date <span class="req">*</span></label>
+          <input type="date" id="date" name="date" required>
         </div>
-      </div>
 
-      <div class="field">
-        <label for="drNumber">DR # <span class="opt">(optional)</span></label>
-        <input type="text" id="drNumber" name="drNumber"
-               placeholder="Delivery receipt number" inputmode="text"
-               enterkeyhint="next">
-      </div>
+        <div class="field">
+          <div class="combo">
+            <input type="text" id="customer" name="customer" placeholder="Customer *"
+                   autocapitalize="characters" autocomplete="off" autocorrect="off"
+                   spellcheck="false" role="combobox" aria-autocomplete="list"
+                   aria-expanded="false" enterkeyhint="next" required>
+            <ul class="suggest" id="customerSuggest" role="listbox" hidden></ul>
+          </div>
+        </div>
 
-      <div class="section-label">Items</div>
-      <div id="items"></div>
+        <div class="field">
+          <div class="combo">
+            <input type="text" id="supplier" name="supplier" placeholder="Supplier (optional)"
+                   autocapitalize="characters" autocomplete="off" autocorrect="off"
+                   spellcheck="false" role="combobox" aria-autocomplete="list"
+                   aria-expanded="false" enterkeyhint="next">
+            <ul class="suggest" id="supplierSuggest" role="listbox" hidden></ul>
+          </div>
+        </div>
 
-      <button type="button" class="add-item" id="addItem">+ Add another item</button>
+        <div class="field">
+          <input type="text" id="drNumber" name="drNumber" placeholder="DR # (optional)"
+                 inputmode="text" enterkeyhint="next">
+        </div>
 
-      <button type="submit" class="submit" id="submitBtn">Save return</button>
-    </form>
+        <div class="section-label">Items</div>
+        <div id="items"></div>
 
-    <section class="recent">
-      <h2>Recent returns</h2>
+        <button type="button" class="add-item" id="addItem">+ Add another item</button>
+
+        <button type="submit" class="submit" id="submitBtn">Save return</button>
+      </form>
+    </section>
+
+    <!-- HISTORY TAB -->
+    <section id="tab-history" class="tab-panel hidden">
       <ul id="recentList">
         <li class="empty" id="recentEmpty">Loading…</li>
       </ul>
@@ -384,10 +410,11 @@
       </div>
 
       <div class="field">
-        <label>Item <span class="req">*</span></label>
-        <input type="text" class="i-item"
-               placeholder="e.g. Coffee Mug" autocapitalize="sentences"
-               enterkeyhint="next">
+        <div class="combo">
+          <input type="text" class="i-item" placeholder="Item *"
+                 autocapitalize="sentences" autocomplete="off" enterkeyhint="next">
+          <ul class="suggest" role="listbox" hidden></ul>
+        </div>
       </div>
 
       <div class="field">

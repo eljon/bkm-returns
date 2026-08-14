@@ -6,16 +6,18 @@ A mobile-first web app for logging item returns, backed by
 Each submission records:
 
 - **Date** — defaults to today
-- **Customer** — text field with instant autocomplete from a bundled customer
-  list (`customers.js`, held in memory — no database round-trip). New customers
-  you enter are added to memory and saved to a shared `customers` collection so
-  they appear as suggestions on every device.
-- **Item**
-- **QTY** — with a +/- stepper
+- **Customer** — autocomplete from a bundled list (`customers.js`, held in
+  memory — no database round-trip) plus any names added later
+- **Supplier** — optional, autocomplete that grows as you type new suppliers
 - **DR #** — delivery-receipt number (optional)
+- One or more **Items**, each with **Item** (autocomplete), **Condition**
+  (Good / Defective) and **QTY** (with a +/- stepper)
 
-New returns appear in a **Recent returns** list right below the form, and the
-customer names you enter feed the autocomplete over time.
+Field labels double as placeholders for a compact form. The Customer, Item and
+Supplier names you enter are remembered and shared across devices (via the
+`customers` / `items` / `suppliers` collections) so they become suggestions
+everywhere. The UI has two tabs: **Input** (the form) and **History** (recent
+returns, grouped by transaction).
 
 The whole app is static HTML/CSS/JS (no build step) that talks directly to
 Firestore from the browser, so it can be hosted anywhere that serves static
@@ -53,12 +55,16 @@ returns/{autoId}
   seq:       42              // integer, the running transaction number
   date:      "2026-08-14"    // string, YYYY-MM-DD
   customer:  "Acme Corp"      // string
+  supplier:  "Globe Parts"    // string ("" when omitted)
   item:      "Coffee Mug"     // string
   condition: "Good"           // "Good" | "Defective"
   qty:       3                // integer >= 1
   drNumber:  "DR-1024"        // string ("" when omitted)
   createdAt: <server timestamp>
 ```
+
+Suggestion names live in their own collections — `customers/`, `items/` and
+`suppliers/` — each holding `{ name, createdAt }` documents.
 
 Transaction numbers are **sequential** (`R-0001`, `R-0002`, …). A single
 `counters/returns` document holds the running count; each save bumps it by one

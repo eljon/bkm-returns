@@ -37,18 +37,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Customer names added on the fly (new customers not in the bundled list),
-    // shared across devices. Read by everyone; new names may be added but not
-    // edited or removed.
-    match /customers/{id} {
-      allow read: if true;
-      allow create: if request.resource.data.keys().hasOnly(['name', 'createdAt'])
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 120
-        && request.resource.data.createdAt == request.time;
-      allow update, delete: if false;
-    }
+    // Name suggestion lists (customers, items, suppliers) built up as people
+    // type new values. Read by everyone; new names may be added but not edited
+    // or removed. Same shape for all three collections.
+    match /customers/{id} { allow read: if true; allow create: if isValidName(request.resource.data); allow update, delete: if false; }
+    match /items/{id}     { allow read: if true; allow create: if isValidName(request.resource.data); allow update, delete: if false; }
+    match /suppliers/{id} { allow read: if true; allow create: if isValidName(request.resource.data); allow update, delete: if false; }
 
     // Everything else is denied by default.
     match /{document=**} {
@@ -67,10 +61,19 @@ service cloud.firestore {
       && data.customer.size() > 0
       && data.item is string
       && data.item.size() > 0
+      && data.supplier is string
       && data.condition in ['Good', 'Defective']
       && data.qty is int
       && data.qty >= 1
       && data.drNumber is string
+      && data.createdAt == request.time;
+  }
+
+  function isValidName(data) {
+    return data.keys().hasOnly(['name', 'createdAt'])
+      && data.name is string
+      && data.name.size() > 0
+      && data.name.size() <= 120
       && data.createdAt == request.time;
   }
 }
