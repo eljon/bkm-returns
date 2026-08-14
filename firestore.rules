@@ -24,6 +24,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Running sequence used to number transactions (R-0001, R-0002, …).
+    // Anyone may read it and bump it by exactly one; it can't be deleted or
+    // jumped, which keeps the numbers gap-free and tamper-resistant.
+    match /counters/returns {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(['current'])
+        && request.resource.data.current == 1;
+      allow update: if request.resource.data.keys().hasOnly(['current'])
+        && request.resource.data.current is int
+        && request.resource.data.current == resource.data.current + 1;
+      allow delete: if false;
+    }
+
     // Everything else is denied by default.
     match /{document=**} {
       allow read, write: if false;
@@ -33,6 +46,8 @@ service cloud.firestore {
   function isValidReturn(data) {
     return data.txnNo is string
       && data.txnNo.size() > 0
+      && data.seq is int
+      && data.seq >= 1
       && data.date is string
       && data.date.size() > 0
       && data.customer is string

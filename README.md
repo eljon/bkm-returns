@@ -45,18 +45,22 @@ same transaction share a `txnNo`:
 
 ```
 returns/{autoId}
-  txnNo:     "R-260814-143052-A3"  // string, shared by items in one return
-  date:      "2026-08-14"          // string, YYYY-MM-DD
-  customer:  "Acme Corp"            // string
-  item:      "Coffee Mug"           // string
-  condition: "Good"                 // "Good" | "Defective"
-  qty:       3                      // integer >= 1
-  drNumber:  "DR-1024"              // string ("" when omitted)
+  txnNo:     "R-0042"        // string, shared by items in one return
+  seq:       42              // integer, the running transaction number
+  date:      "2026-08-14"    // string, YYYY-MM-DD
+  customer:  "Acme Corp"      // string
+  item:      "Coffee Mug"     // string
+  condition: "Good"           // "Good" | "Defective"
+  qty:       3                // integer >= 1
+  drNumber:  "DR-1024"        // string ("" when omitted)
   createdAt: <server timestamp>
 ```
 
-The **Recent returns** list groups documents by `txnNo` so each transaction
-shows as one card with its line items.
+Transaction numbers are **sequential** (`R-0001`, `R-0002`, …). A single
+`counters/returns` document holds the running count; each save bumps it by one
+inside a Firestore transaction, so the same number is never reused. The
+**Recent returns** list groups documents by `txnNo` so each transaction shows
+as one card with its line items.
 
 ## Setup
 

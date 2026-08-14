@@ -11,11 +11,12 @@ import {
   orderBy,
   limit,
   serverTimestamp,
-  writeBatch,
+  runTransaction,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const RETURNS = "returns";
+const COUNTER = ["counters", "returns"]; // doc holding the running sequence
 
 // ---- DOM refs ---------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -133,15 +134,9 @@ function escapeHtml(s) {
   );
 }
 
-// Transaction number, e.g. R-260814-143052-A3 (date-time + short suffix).
-function makeTxnNo() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  const stamp =
-    String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate()) +
-    "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
-  const suffix = Math.random().toString(36).slice(2, 4).toUpperCase();
-  return `R-${stamp}-${suffix}`;
+// Format a sequence integer as a transaction number, e.g. 42 -> "R-0042".
+function fmtTxnNo(seq) {
+  return "R-" + String(seq).padStart(4, "0");
 }
 
 // ---- Recent returns (grouped by transaction) --------------------------------
@@ -252,35 +247,46 @@ form.addEventListener("submit", async (e) => {
     items.push({ item, condition: cond, qty });
   }
 
-  const txnNo = makeTxnNo();
-
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Saving…';
 
   try {
-    // Write all line items atomically under the one transaction number.
-    const batch = writeBatch(db);
-    items.forEach((it) => {
-      const ref = doc(collection(db, RETURNS));
-      batch.set(ref, {
-        txnNo,
-        date,
-        customer,
-        drNumber,
-        item: it.item,
-        condition: it.condition,
-        qty: it.qty,
-        createdAt: serverTimestamp(),
+    // Atomically bump the running counter and write every line item under the
+    // resulting sequential transaction number — all in one Firestore transaction.
+    const counterRef = doc(db, ...COUNTER);
+    const txnNo = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(counterRef);
+      const next = (snap.exists() ? snap.data().current || 0 : 0) + 1;
+      tx.set(counterRef, { current: next });
+
+      const no = fmtTxnNo(next);
+      items.forEach((it) => {
+        const ref = doc(collection(db, RETURNS));
+        tx.set(ref, {
+          txnNo: no,
+          seq: next,
+          date,
+          customer,
+          drNumber,
+          item: it.item,
+          condition: it.condition,
+          qty: it.qty,
+          createdAt: serverTimestamp(),
+        });
       });
+      return no;
     });
-    await batch.commit();
 
     showToast(`Saved ${items.length} item${items.length > 1 ? "s" : ""} ✓  ${txnNo}`, "ok");
     resetForm();
     loadRecent();
   } catch (err) {
     console.error(err);
-    showToast(err?.message || "Save failed — try again", "err");
+    const msg =
+      err?.code === "permission-denied"
+        ? "Save blocked — re-publish the Firestore rules"
+        : err?.message || "Save failed — try again";
+    showToast(msg, "err");
   } finally {
     btn.disabled = false;
     btn.textContent = "Save return";
