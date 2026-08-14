@@ -21,10 +21,13 @@ service cloud.firestore {
       allow create: if isValidReturn(request.resource.data);
 
       // The only allowed edit is stamping/changing the SR number; everything
-      // else stays immutable, and records can't be deleted.
+      // else stays immutable.
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sr'])
         && request.resource.data.sr is string;
-      allow delete: if false;
+
+      // Cleanup: only the early test records (transaction R-0010 and earlier)
+      // may be deleted. Once they're gone this rule permits nothing.
+      allow delete: if resource.data.seq is int && resource.data.seq <= 10;
     }
 
     // Running sequence used to number transactions (R-0001, R-0002, …).

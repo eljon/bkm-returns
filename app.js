@@ -261,7 +261,9 @@ function showTab(name) {
 
 // Hash-based routing: #sr / #history select tabs and make links shareable.
 function routeFromHash() {
-  showTab((location.hash || "").replace(/^#/, ""));
+  const name = (location.hash || "").replace(/^#/, "");
+  if (name === "cleanup") return maintenanceCleanup();
+  showTab(name);
 }
 tabButtons.forEach((b) =>
   b.addEventListener("click", () => {
@@ -368,7 +370,6 @@ function renderLines(items) {
 
 function renderTxnCard(g) {
   const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
-  const txn = g.txnNo ? ` · ${escapeHtml(g.txnNo)}` : "";
   const n = g.items.length;
   const body = condGroups(g.items)
     .map(
@@ -380,12 +381,13 @@ function renderTxnCard(g) {
     )
     .join("");
   return `<li class="txn">
+     ${g.txnNo ? `<div class="r-txn">${escapeHtml(g.txnNo)}</div>` : ""}
      <div class="r-top">
        <span class="r-cust">${escapeHtml(g.customer)}</span>
        <span class="r-count">${n} item${n > 1 ? "s" : ""}</span>
      </div>
      ${body}
-     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${txn}</div>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}</div>
    </li>`;
 }
 
@@ -528,6 +530,7 @@ async function loadTransactions() {
       if (!groups.has(key)) {
         groups.set(key, {
           txnNo: r.txnNo || "",
+          seq: r.seq || 0,
           customer: r.customer,
           date: r.date,
           drNumber: r.drNumber || "",
@@ -668,6 +671,51 @@ function resetForm() {
   itemsWrap.innerHTML = "";
   addItemRow();
   customerInput.focus();
+}
+
+// One-time maintenance (open .../#cleanup): delete R-0010 and earlier and
+// clear every SR number. Guarded by a confirm; requires the delete rule.
+async function maintenanceCleanup() {
+  if (!db) return;
+  await loadTransactions();
+
+  const delIds = [];
+  const clrIds = [];
+  for (const g of allTxns) {
+    const del = g.seq && g.seq <= 10;
+    for (const it of g.items) {
+      if (del) delIds.push(it.id);
+      else if (it.sr) clrIds.push(it.id);
+    }
+  }
+
+  const ok = window.confirm(
+    `Delete ${delIds.length} record(s) for R-0010 and earlier, and clear ${clrIds.length} SR number(s)?\n\nThis cannot be undone.`
+  );
+  if (!ok) {
+    location.hash = "history";
+    return;
+  }
+
+  try {
+    const ops = [
+      ...delIds.map((id) => ({ t: "del", id })),
+      ...clrIds.map((id) => ({ t: "clr", id })),
+    ];
+    for (let i = 0; i < ops.length; i += 400) {
+      const batch = writeBatch(db);
+      for (const op of ops.slice(i, i + 400)) {
+        if (op.t === "del") batch.delete(doc(db, RETURNS, op.id));
+        else batch.update(doc(db, RETURNS, op.id), { sr: "" });
+      }
+      await batch.commit();
+    }
+    window.alert(`Done — deleted ${delIds.length} record(s), cleared ${clrIds.length} SR(s).`);
+  } catch (err) {
+    console.error(err);
+    window.alert("Cleanup failed: " + (err?.code || err?.message || err));
+  }
+  location.hash = "history";
 }
 
 // Select the initial tab from the URL hash (after db is ready).
