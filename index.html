@@ -273,7 +273,12 @@
     #search { margin-bottom: 12px; }
     #recentList, #srList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
     .sr-hint { color: var(--muted); font-size: 0.85rem; margin: 0 4px 12px; }
-    .sr-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 12px; }
+    .sr-items { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .sr-item { display: flex; align-items: center; gap: 11px; padding: 9px 2px; cursor: pointer; }
+    .sr-check { width: 21px; height: 21px; accent-color: var(--accent); flex: 0 0 auto; margin: 0; }
+    .sr-item-text { flex: 1; font-size: 0.95rem; min-width: 0; }
+    .sr-item-text .muted { color: var(--muted); font-size: 0.82rem; }
+    .sr-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 14px; }
     .sr-save {
       background: var(--accent);
       color: #fff;
@@ -355,7 +360,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v2.1</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v2.2</span></h1>
     </header>
 
     <nav class="tabs">

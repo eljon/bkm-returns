@@ -65,9 +65,11 @@ returns/{autoId}
   createdAt: <server timestamp>
 ```
 
-The **SR** tab lists transactions that have neither an SR nor a DR and lets you
-stamp an SR number onto all of a transaction's line items (the one allowed edit
-— every other field stays immutable).
+SR is tracked **per item**. The **SR** tab lists each item that has no SR yet
+(and whose transaction has no DR); every pending item has a checkbox (checked by
+default), and saving stamps the entered SR onto the ticked items only — the rest
+stay pending, so one transaction can accumulate several SR numbers. Setting `sr`
+is the one allowed edit; every other field stays immutable.
 
 Suggestion names live in their own collections — `customers/`, `items/` and
 `suppliers/` — each holding `{ name, createdAt }` documents.

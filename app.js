@@ -330,22 +330,21 @@ function condBadge(c) {
 
 function renderLines(g) {
   return g.items
-    .map(
-      (it) =>
-        `<li class="r-line">
+    .map((it) => {
+      const meta = [it.supplier || "", it.sr ? "SR " + it.sr : ""].filter(Boolean).join(" · ");
+      return `<li class="r-line">
            <div class="r-line-main">
              <span class="r-line-item">${escapeHtml(it.item)}</span>
-             <span class="r-line-sup">${escapeHtml(it.supplier || "")}</span>
+             <span class="r-line-sup">${escapeHtml(meta)}</span>
            </div>
            <span class="r-line-right">${condBadge(it.condition)}<span class="r-qty">×${escapeHtml(it.qty)}</span></span>
-         </li>`
-    )
+         </li>`;
+    })
     .join("");
 }
 
 function renderTxnCard(g) {
   const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
-  const sr = g.sr ? ` · SR ${escapeHtml(g.sr)}` : "";
   const txn = g.txnNo ? ` · ${escapeHtml(g.txnNo)}` : "";
   const n = g.items.length;
   return `<li class="txn">
@@ -354,7 +353,7 @@ function renderTxnCard(g) {
        <span class="r-count">${n} item${n > 1 ? "s" : ""}</span>
      </div>
      <ul class="r-lines">${renderLines(g)}</ul>
-     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${sr}${txn}</div>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${txn}</div>
    </li>`;
 }
 
@@ -362,12 +361,12 @@ function renderTxnCard(g) {
 function txnMatches(g, q) {
   if (g.customer && g.customer.toLowerCase().includes(q)) return true;
   if (g.drNumber && g.drNumber.toLowerCase().includes(q)) return true;
-  if (g.sr && g.sr.toLowerCase().includes(q)) return true;
   if (g.txnNo && g.txnNo.toLowerCase().includes(q)) return true;
   return g.items.some(
     (it) =>
       (it.item && it.item.toLowerCase().includes(q)) ||
-      (it.supplier && it.supplier.toLowerCase().includes(q))
+      (it.supplier && it.supplier.toLowerCase().includes(q)) ||
+      (it.sr && it.sr.toLowerCase().includes(q))
   );
 }
 
@@ -389,21 +388,33 @@ function renderHistory() {
 
 searchInput.addEventListener("input", renderHistory);
 
-// ---- SR tab (transactions needing an SR number) -----------------------------
-// A transaction needs an SR only if it has neither an SR nor a DR yet.
-function needsSr(g) {
-  return !g.sr && !g.drNumber;
-}
-
-function srCard(g, i) {
-  const n = g.items.length;
+// ---- SR tab (per-item) ------------------------------------------------------
+// An item is pending if it has no SR and its transaction has no DR. Each pending
+// item gets a checkbox (checked by default); one SR number is stamped onto the
+// ticked items, so a transaction can end up with several SR numbers over time.
+function srCard(card, i) {
+  const g = card.g;
+  const rows = card.pendingItems
+    .map(
+      (it) =>
+        `<li>
+           <label class="sr-item">
+             <input type="checkbox" class="sr-check" data-id="${escapeHtml(it.id)}" checked>
+             <span class="sr-item-text">${escapeHtml(it.item)}
+               <span class="muted">${escapeHtml(it.supplier || "")} · ×${escapeHtml(it.qty)}</span>
+             </span>
+             ${condBadge(it.condition)}
+           </label>
+         </li>`
+    )
+    .join("");
   return `<li class="txn">
      <div class="r-top">
        <span class="r-cust">${escapeHtml(g.customer)}</span>
        <span class="r-count">${escapeHtml(g.txnNo || "")}</span>
      </div>
-     <ul class="r-lines">${renderLines(g)}</ul>
-     <div class="r-meta">${escapeHtml(fmtDate(g.date))} · ${n} item${n > 1 ? "s" : ""}</div>
+     <ul class="sr-items">${rows}</ul>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))}</div>
      <div class="sr-add">
        <input type="text" class="sr-input" placeholder="SR # *" autocomplete="off"
               autocapitalize="characters" spellcheck="false" enterkeyhint="done">
@@ -413,34 +424,47 @@ function srCard(g, i) {
 }
 
 function renderSr() {
-  srPending = allTxns.filter(needsSr);
+  srPending = [];
+  for (const g of allTxns) {
+    if (g.drNumber) continue; // a DR covers the whole transaction
+    const pendingItems = g.items.filter((it) => !it.sr);
+    if (pendingItems.length) srPending.push({ g, pendingItems });
+  }
   if (!srPending.length) {
-    srList.innerHTML = '<li class="empty">All caught up — every transaction has an SR or a DR.</li>';
+    srList.innerHTML = '<li class="empty">All caught up — every item has an SR or a DR.</li>';
     return;
   }
-  srList.innerHTML = srPending.map((g, i) => srCard(g, i)).join("");
+  srList.innerHTML = srPending.map((c, i) => srCard(c, i)).join("");
 }
 
 srList.addEventListener("click", async (e) => {
   const btn = e.target.closest(".sr-save");
   if (!btn) return;
-  const g = srPending[+btn.dataset.i];
-  if (!g || !db) return;
+  const card = srPending[+btn.dataset.i];
+  if (!card || !db) return;
 
-  const input = btn.closest(".sr-add").querySelector(".sr-input");
-  const sr = input.value.trim();
+  const txnEl = btn.closest(".txn");
+  const sr = txnEl.querySelector(".sr-input").value.trim();
   if (!sr) return showToast("Enter an SR number", "err");
-  if (!g.ids || !g.ids.length) return showToast("Reopen the SR tab and try again", "err");
+
+  const chosen = [...txnEl.querySelectorAll(".sr-check")]
+    .filter((c) => c.checked)
+    .map((c) => c.dataset.id)
+    .filter(Boolean);
+  if (!chosen.length) return showToast("Tick at least one item", "err");
 
   btn.disabled = true;
   btn.textContent = "Saving…";
   try {
-    // Stamp the SR onto every line-item document of this transaction.
+    // Stamp the SR onto each ticked item's document.
     const batch = writeBatch(db);
-    g.ids.forEach((id) => batch.update(doc(db, RETURNS, id), { sr }));
+    chosen.forEach((id) => batch.update(doc(db, RETURNS, id), { sr }));
     await batch.commit();
-    g.sr = sr;
-    showToast(`SR added${g.txnNo ? " to " + g.txnNo : ""} ✓`, "ok");
+    // pendingItems are references into allTxns, so update them in memory.
+    card.pendingItems.forEach((it) => {
+      if (chosen.includes(it.id)) it.sr = sr;
+    });
+    showToast(`SR added to ${chosen.length} item${chosen.length > 1 ? "s" : ""} ✓`, "ok");
     renderSr();
     renderHistory();
   } catch (err) {
@@ -474,14 +498,17 @@ async function loadTransactions() {
           customer: r.customer,
           date: r.date,
           drNumber: r.drNumber || "",
-          sr: r.sr || "",
-          ids: [],
           items: [],
         });
       }
-      const g = groups.get(key);
-      g.ids.push(docSnap.id);
-      g.items.push({ item: r.item, supplier: r.supplier || "", condition: r.condition, qty: r.qty });
+      groups.get(key).items.push({
+        id: docSnap.id,
+        item: r.item,
+        supplier: r.supplier || "",
+        condition: r.condition,
+        qty: r.qty,
+        sr: r.sr || "",
+      });
     });
     allTxns = [...groups.values()];
     renderHistory();
@@ -570,20 +597,20 @@ form.addEventListener("submit", async (e) => {
       rememberName(suppliers, it.supplier);
     });
 
-    // Keep History/SR current without another read: prepend the new transaction.
-    // ids is left empty; opening the SR/History tab reloads with real doc ids.
+    // Keep History current without another read: prepend the new transaction.
+    // Item ids are empty here; opening the SR/History tab reloads real doc ids.
     allTxns.unshift({
       txnNo,
       customer,
       date,
       drNumber,
-      sr: "",
-      ids: [],
       items: lineItems.map((it) => ({
+        id: "",
         item: it.item,
         supplier: it.supplier,
         condition: it.condition,
         qty: it.qty,
+        sr: "",
       })),
     });
     renderHistory();
