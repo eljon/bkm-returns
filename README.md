@@ -7,7 +7,9 @@ Each submission records:
 
 - **Date** — defaults to today
 - **Customer** — text field with instant autocomplete from a bundled customer
-  list (`customers.js`, held in memory — no database round-trip)
+  list (`customers.js`, held in memory — no database round-trip). New customers
+  you enter are added to memory and saved to a shared `customers` collection so
+  they appear as suggestions on every device.
 - **Item**
 - **QTY** — with a +/- stepper
 - **DR #** — delivery-receipt number (optional)

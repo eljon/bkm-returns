@@ -6,6 +6,7 @@ import {
   getFirestore,
   collection,
   doc,
+  addDoc,
   getDocs,
   query,
   orderBy,
@@ -108,12 +109,20 @@ addItemRow();
 const SUGGEST_MAX = 10;
 let activeIdx = -1; // highlighted suggestion for keyboard nav
 
+// Working list = bundled base names + any new ones added over time (merged
+// from Firestore below). Suggestions always read from this in-memory array,
+// so typing stays instant regardless of the network.
+const norm = (s) => s.trim().replace(/\s+/g, " ");
+const custKey = (s) => norm(s).toLowerCase();
+const customerNames = CUSTOMERS.slice();
+const customerSet = new Set(customerNames.map(custKey));
+
 // Return up to SUGGEST_MAX names: prefix matches first, then contains-matches.
 function searchCustomers(q) {
   const needle = q.toLowerCase();
   const starts = [];
   const contains = [];
-  for (const name of CUSTOMERS) {
+  for (const name of customerNames) {
     const i = name.toLowerCase().indexOf(needle);
     if (i === 0) {
       if (starts.length < SUGGEST_MAX) starts.push(name);
@@ -310,6 +319,46 @@ async function loadRecent() {
 }
 loadRecent();
 
+// ---- Shared customer additions ----------------------------------------------
+// Merge any customers added on other devices into the in-memory list. Runs in
+// the background — suggestions already work from the bundled base list.
+async function loadExtraCustomers() {
+  if (!db) return;
+  try {
+    const snap = await getDocs(collection(db, "customers"));
+    let added = false;
+    snap.forEach((d) => {
+      const name = d.data().name;
+      if (name && !customerSet.has(custKey(name))) {
+        customerSet.add(custKey(name));
+        customerNames.push(name);
+        added = true;
+      }
+    });
+    if (added) {
+      customerNames.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+loadExtraCustomers();
+
+// Add a newly-seen customer to memory (instant) and share it via Firestore.
+async function rememberCustomer(name) {
+  const n = norm(name);
+  if (!n || customerSet.has(custKey(n))) return; // already known
+  customerSet.add(custKey(n));
+  customerNames.push(n);
+  customerNames.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  if (!db) return;
+  try {
+    await addDoc(collection(db, "customers"), { name: n, createdAt: serverTimestamp() });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
 // ---- Submit -----------------------------------------------------------------
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -373,6 +422,7 @@ form.addEventListener("submit", async (e) => {
     });
 
     showToast(`Saved ${items.length} item${items.length > 1 ? "s" : ""} ✓  ${txnNo}`, "ok");
+    rememberCustomer(customer); // add to suggestions if it's a new name
     resetForm();
     loadRecent();
   } catch (err) {

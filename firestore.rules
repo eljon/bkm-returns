@@ -37,6 +37,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Customer names added on the fly (new customers not in the bundled list),
+    // shared across devices. Read by everyone; new names may be added but not
+    // edited or removed.
+    match /customers/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(['name', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
     // Everything else is denied by default.
     match /{document=**} {
       allow read, write: if false;
