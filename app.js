@@ -248,16 +248,27 @@ addItemRow(); // start with one item
 attachAutocomplete(customerInput, $("customerSuggest"), () => customers.names);
 
 // ---- Tabs -------------------------------------------------------------------
+const TAB_NAMES = ["input", "sr", "history"];
 const tabButtons = [...document.querySelectorAll(".tab")];
 const panels = { input: $("tab-input"), sr: $("tab-sr"), history: $("tab-history") };
+
+function showTab(name) {
+  if (!TAB_NAMES.includes(name)) name = "input";
+  tabButtons.forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
+  Object.entries(panels).forEach(([k, el]) => el.classList.toggle("hidden", k !== name));
+  if (name === "history" || name === "sr") loadTransactions();
+}
+
+// Hash-based routing: #sr / #history select tabs and make links shareable.
+function routeFromHash() {
+  showTab((location.hash || "").replace(/^#/, ""));
+}
 tabButtons.forEach((b) =>
   b.addEventListener("click", () => {
-    const name = b.dataset.tab;
-    tabButtons.forEach((x) => x.classList.toggle("active", x === b));
-    Object.entries(panels).forEach(([k, el]) => el.classList.toggle("hidden", k !== name));
-    if (name === "history" || name === "sr") loadTransactions();
+    location.hash = b.dataset.tab; // triggers hashchange → showTab
   })
 );
+window.addEventListener("hashchange", routeFromHash);
 
 // ---- Firebase init ----------------------------------------------------------
 const isConfigured =
@@ -633,3 +644,6 @@ function resetForm() {
   addItemRow();
   customerInput.focus();
 }
+
+// Select the initial tab from the URL hash (after db is ready).
+routeFromHash();
