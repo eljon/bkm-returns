@@ -15,20 +15,27 @@ New returns appear in a **Recent returns** list right below the form, and the
 customer names you enter feed the autocomplete over time.
 
 The whole app is static HTML/CSS/JS (no build step) that talks directly to
-Firestore from the browser, and it's deployed on **Firebase Hosting**.
+Firestore from the browser, so it can be hosted anywhere that serves static
+files. This repo is set up for **GitHub Pages** (the `docs/` folder), with
+Firestore as the database.
 
 ## Project layout
 
 | Path                        | Purpose                                        |
 | --------------------------- | ---------------------------------------------- |
-| `public/index.html`         | Mobile UI (HTML + CSS)                          |
-| `public/app.js`             | Firestore reads/writes (Firebase modular SDK)  |
-| `public/firebase-config.js` | Your project's web config — **fill this in**   |
-| `public/manifest.webmanifest` | PWA manifest for "Add to Home Screen"        |
-| `firebase.json`             | Hosting + Firestore config                      |
+| `docs/index.html`           | Mobile UI (HTML + CSS)                          |
+| `docs/app.js`               | Firestore reads/writes (Firebase modular SDK)  |
+| `docs/firebase-config.js`   | Your project's web config                       |
+| `docs/manifest.webmanifest` | PWA manifest for "Add to Home Screen"           |
+| `docs/.nojekyll`            | Tells GitHub Pages to serve files as-is         |
 | `firestore.rules`           | Security rules for the `returns` collection     |
 | `firestore.indexes.json`    | Firestore index definitions (none needed yet)   |
-| `.firebaserc`               | Default Firebase project alias — **fill this in** |
+| `firebase.json`             | Firestore config (used by the Firebase CLI)     |
+| `.firebaserc`               | Default Firebase project alias                  |
+
+> GitHub Pages hosts the **website**. It does **not** deploy the Firestore
+> **security rules** — those have to be published to Firebase separately (see
+> step 3 below).
 
 ## Data model
 
@@ -57,7 +64,7 @@ returns/{autoId}
 
 ### 2. Wire up the config
 
-Paste your values into [`public/firebase-config.js`](public/firebase-config.js),
+Paste your values into [`docs/firebase-config.js`](docs/firebase-config.js),
 replacing the `YOUR_*` placeholders. Also set your project id in
 [`.firebaserc`](.firebaserc).
 
@@ -65,30 +72,32 @@ replacing the `YOUR_*` placeholders. Also set your project id in
 > project to the client SDK. Your data is protected by the Firestore security
 > rules, not by hiding this config.
 
-### 3. Deploy
+### 3. Publish the security rules to Firestore
 
-Install the CLI once, then log in and deploy:
+GitHub Pages only hosts the website, so you must load the rules into Firebase
+yourself. Easiest way — no tooling required:
 
-```bash
-npm install -g firebase-tools
-firebase login
-firebase deploy            # deploys hosting + Firestore rules & indexes
-```
+1. Firebase console → **Firestore Database → Rules** tab.
+2. Delete what's there and paste the contents of
+   [`firestore.rules`](firestore.rules).
+3. Click **Publish**.
 
-Firebase prints a **Hosting URL** like `https://YOUR_PROJECT_ID.web.app` —
-that's your app.
+(Or, if you have the [Firebase CLI](https://firebase.google.com/docs/cli):
+`firebase deploy --only firestore:rules`.)
 
-You can also run it locally first:
+Without this step the database stays locked and the app can't read or write.
 
-```bash
-firebase emulators:start   # Hosting + Firestore emulators
-# or just serve the static site:
-firebase serve --only hosting
-```
+### 4. Turn on GitHub Pages
 
-### 4. Use it on your phone
+1. GitHub repo → **Settings → Pages**.
+2. Under **Build and deployment → Source**, choose **Deploy from a branch**.
+3. **Branch:** pick the branch these files are on, **Folder:** `/docs`.
+4. Click **Save**. After a minute Pages shows your live URL, e.g.
+   `https://<your-user>.github.io/bkm-returns/`.
 
-Open the Hosting URL on your phone and add it to your home screen:
+### 5. Use it on your phone
+
+Open the Pages URL on your phone and add it to your home screen:
 
 - **iPhone (Safari):** Share → *Add to Home Screen*
 - **Android (Chrome):** ⋮ menu → *Add to Home screen*
@@ -112,5 +121,6 @@ allow create: if request.auth != null && isValidReturn(request.resource.data);
 
 ## Updating
 
-Edit files under `public/` (or the rules) and run `firebase deploy` again.
-Hosting keeps the same URL across deploys.
+Edit files under `docs/` and push — GitHub Pages redeploys automatically and
+keeps the same URL. If you change `firestore.rules`, re-publish them in the
+Firestore **Rules** tab (or `firebase deploy --only firestore:rules`).
