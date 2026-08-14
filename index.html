@@ -47,6 +47,14 @@
       font-weight: 700;
       letter-spacing: 0.2px;
     }
+    header h1 .version {
+      font-size: 0.62rem;
+      font-weight: 600;
+      color: var(--muted);
+      vertical-align: middle;
+      letter-spacing: 0;
+      margin-left: 4px;
+    }
     header p {
       margin: 4px 0 0;
       color: var(--muted);
@@ -315,7 +323,8 @@
 <body>
   <div class="app">
     <header>
-      <h1>BKM ITEM RETURNS</h1>
+      <!-- Bump this version on each new set of requested changes. -->
+      <h1>BKM ITEM RETURNS <span class="version">v1.6</span></h1>
     </header>
 
     <div class="banner hidden" id="configBanner">
