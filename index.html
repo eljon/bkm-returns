@@ -275,7 +275,32 @@
     .sr-hint { color: var(--muted); font-size: 0.85rem; margin: 0 4px 12px; }
     .sr-items { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
     .sr-item { display: flex; align-items: center; gap: 11px; padding: 9px 2px; cursor: pointer; }
-    .sr-check { width: 21px; height: 21px; accent-color: var(--accent); flex: 0 0 auto; margin: 0; }
+    /* Custom checkbox — native ones render inconsistently (invisible on iOS). */
+    .sr-check {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 auto;
+      margin: 0;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      background: var(--field);
+      position: relative;
+      cursor: pointer;
+    }
+    .sr-check:checked { background: var(--accent); border-color: var(--accent); }
+    .sr-check:checked::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 3px;
+      width: 6px;
+      height: 12px;
+      border: solid #fff;
+      border-width: 0 2.5px 2.5px 0;
+      transform: rotate(45deg);
+    }
     .sr-item-text { flex: 1; font-size: 0.95rem; min-width: 0; }
     .sr-item-text .muted { color: var(--muted); font-size: 0.82rem; }
     .sr-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 14px; }
@@ -360,7 +385,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v2.3</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v2.4</span></h1>
     </header>
 
     <nav class="tabs">
