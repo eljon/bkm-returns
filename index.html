@@ -385,7 +385,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v2.4</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v2.5</span></h1>
     </header>
 
     <nav class="tabs">
@@ -495,6 +495,7 @@
     </div>
   </template>
 
-  <script type="module" src="app.js"></script>
+  <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
+  <script type="module" src="app.js?v=2.5"></script>
 </body>
 </html>
