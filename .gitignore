@@ -1,6 +1,8 @@
-# clasp (Apps Script CLI)
-.clasp.json
-.clasprc.json
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
 # OS / editor
 .DS_Store

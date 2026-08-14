@@ -1,98 +1,116 @@
 # BKM Item Returns
 
-A mobile-first web app for logging item returns straight into a Google Sheet.
+A mobile-first web app for logging item returns, backed by
+[Cloud Firestore](https://firebase.google.com/docs/firestore).
 
 Each submission records:
 
-- **Date** (defaults to today)
-- **Customer** — text field with autocomplete suggestions pulled from the
-  customer list in the sheet
-- **Item name**
-- **Quantity** (with +/- stepper)
-- **With paper** — toggle, off by default
-- **Remarks**
+- **Date** — defaults to today
+- **Customer** — text field with autocomplete pulled from recent returns
+- **Item**
+- **QTY** — with a +/- stepper
+- **DR #** — delivery-receipt number (optional)
 
-New customers you type are automatically added back to the customer list, so
-the autocomplete improves over time.
+New returns appear in a **Recent returns** list right below the form, and the
+customer names you enter feed the autocomplete over time.
 
-## Why Google Apps Script?
+The whole app is static HTML/CSS/JS (no build step) that talks directly to
+Firestore from the browser, and it's deployed on **Firebase Hosting**.
 
-The app is a [Google Apps Script](https://script.google.com) web app bound to
-your spreadsheet. This means:
+## Project layout
 
-- No separate server, hosting, or database to manage.
-- No API keys or OAuth credentials to wire up — the script already has
-  permission to read and write *its own* spreadsheet.
-- One URL you can open (and "Add to Home Screen") on any phone.
+| Path                        | Purpose                                        |
+| --------------------------- | ---------------------------------------------- |
+| `public/index.html`         | Mobile UI (HTML + CSS)                          |
+| `public/app.js`             | Firestore reads/writes (Firebase modular SDK)  |
+| `public/firebase-config.js` | Your project's web config — **fill this in**   |
+| `public/manifest.webmanifest` | PWA manifest for "Add to Home Screen"        |
+| `firebase.json`             | Hosting + Firestore config                      |
+| `firestore.rules`           | Security rules for the `returns` collection     |
+| `firestore.indexes.json`    | Firestore index definitions (none needed yet)   |
+| `.firebaserc`               | Default Firebase project alias — **fill this in** |
 
-The source lives in [`apps-script/`](apps-script/):
+## Data model
 
-| File              | Purpose                                            |
-| ----------------- | -------------------------------------------------- |
-| `Code.gs`         | Server-side: serves the page, reads/writes the sheet |
-| `Index.html`      | The mobile UI (HTML + CSS + JS in one file)        |
-| `appsscript.json` | Project manifest (timezone + web app settings)     |
+Documents are stored in a single `returns` collection:
+
+```
+returns/{autoId}
+  date:      "2026-08-14"     // string, YYYY-MM-DD
+  customer:  "Acme Corp"       // string
+  item:      "Coffee Mug"      // string
+  qty:       3                 // integer >= 1
+  drNumber:  "DR-1024"         // string ("" when omitted)
+  createdAt: <server timestamp>
+```
 
 ## Setup
 
-### 1. Create the spreadsheet
+### 1. Create a Firebase project
 
-1. Create a new Google Sheet (this becomes your returns database).
-2. Add a tab named **`Customers`**. Put one customer name per row in
-   column A. (A header cell saying `Customer` in A1 is fine — it's skipped.)
-   You can leave this empty and let it fill up as you submit returns.
-3. The **`Returns`** tab is created automatically on the first submission,
-   with headers: `Date | Customer | Item Name | Quantity | With Paper |
-   Remarks | Submitted At`.
+1. Go to the [Firebase console](https://console.firebase.google.com) and
+   **Add project**.
+2. In **Build → Firestore Database**, click **Create database** and start in
+   **production mode** (the rules in this repo will secure it).
+3. In **Project settings → General → Your apps**, click the web icon
+   (`</>`) to register a web app, then copy the `firebaseConfig` object.
 
-### 2. Add the script
+### 2. Wire up the config
 
-1. In the sheet, go to **Extensions → Apps Script**.
-2. Delete the default `Code.gs` contents and paste in this repo's
-   `apps-script/Code.gs`.
-3. Click **+ → HTML** and create a file named **`Index`** (no extension).
-   Paste in `apps-script/Index.html`.
-4. (Optional) Open **Project Settings → "Show appsscript.json"** and match
-   the contents of `apps-script/appsscript.json`. Adjust `timeZone` to yours.
-5. Save.
+Paste your values into [`public/firebase-config.js`](public/firebase-config.js),
+replacing the `YOUR_*` placeholders. Also set your project id in
+[`.firebaserc`](.firebaserc).
 
-> Using [`clasp`](https://github.com/google/clasp)? You can `clasp clone`
-> your script project and push the `apps-script/` folder directly.
+> The values in `firebaseConfig` are **not secrets** — they only identify your
+> project to the client SDK. Your data is protected by the Firestore security
+> rules, not by hiding this config.
 
-### 3. Deploy as a web app
+### 3. Deploy
 
-1. Click **Deploy → New deployment**.
-2. Select type **Web app**.
-3. Set:
-   - **Execute as:** *Me*
-   - **Who has access:** *Anyone* (or *Anyone within your organization*).
-     Pick whatever matches who should be able to log returns.
-4. Click **Deploy**, authorize the requested permissions, and copy the
-   **web app URL**.
+Install the CLI once, then log in and deploy:
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase deploy            # deploys hosting + Firestore rules & indexes
+```
+
+Firebase prints a **Hosting URL** like `https://YOUR_PROJECT_ID.web.app` —
+that's your app.
+
+You can also run it locally first:
+
+```bash
+firebase emulators:start   # Hosting + Firestore emulators
+# or just serve the static site:
+firebase serve --only hosting
+```
 
 ### 4. Use it on your phone
 
-Open the web app URL on your phone and add it to your home screen for an
-app-like experience:
+Open the Hosting URL on your phone and add it to your home screen:
 
 - **iPhone (Safari):** Share → *Add to Home Screen*
 - **Android (Chrome):** ⋮ menu → *Add to Home screen*
 
-Submit a return and watch the row appear in the `Returns` tab.
+Submit a return and watch it appear in the **Recent returns** list — and in
+the Firestore console under the `returns` collection.
+
+## Security notes
+
+The default [`firestore.rules`](firestore.rules) let **anyone** with the app
+URL create well-formed returns (no login), while making existing records
+**read-only and immutable**. That's convenient for an internal tool but means
+the create endpoint is open to the public.
+
+To lock it down, add [Firebase Authentication](https://firebase.google.com/docs/auth)
+and change the `create` rule to require a signed-in user:
+
+```
+allow create: if request.auth != null && isValidReturn(request.resource.data);
+```
 
 ## Updating
 
-After editing the code, redeploy: **Deploy → Manage deployments → ✎ (edit)
-→ Version: New version → Deploy**. Keeping the same deployment preserves the
-URL.
-
-## Configuration
-
-Sheet/tab names and column headers are defined at the top of `Code.gs`:
-
-```js
-var RETURNS_SHEET = 'Returns';
-var CUSTOMERS_SHEET = 'Customers';
-```
-
-Change these if you prefer different tab names.
+Edit files under `public/` (or the rules) and run `firebase deploy` again.
+Hosting keeps the same URL across deploys.

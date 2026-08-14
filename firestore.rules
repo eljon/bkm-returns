@@ -1,0 +1,45 @@
+rules_version = '2';
+
+// Security rules for the BKM Returns app.
+//
+// The web app writes to the `returns` collection with NO authentication, so
+// these rules are intentionally permissive but constrained: they validate the
+// shape of each document and forbid editing or deleting existing records.
+//
+// IMPORTANT: open create access means anyone with your web app URL (and the
+// public Firebase config) can add returns. That is usually fine for an
+// internal tool, but if you need real protection, add Firebase Authentication
+// and tighten the `create` condition to `request.auth != null`.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /returns/{id} {
+      // Anyone can read the recent-returns list.
+      allow read: if true;
+
+      // Allow creating a well-formed return.
+      allow create: if isValidReturn(request.resource.data);
+
+      // Records are immutable once written.
+      allow update, delete: if false;
+    }
+
+    // Everything else is denied by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+
+  function isValidReturn(data) {
+    return data.date is string
+      && data.date.size() > 0
+      && data.customer is string
+      && data.customer.size() > 0
+      && data.item is string
+      && data.item.size() > 0
+      && data.qty is int
+      && data.qty >= 1
+      && data.drNumber is string
+      && data.createdAt == request.time;
+  }
+}

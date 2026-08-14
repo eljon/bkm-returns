@@ -1,0 +1,10 @@
+{
+  "name": "BKM Item Returns",
+  "short_name": "Returns",
+  "description": "Log item returns to Firebase.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": []
+}
