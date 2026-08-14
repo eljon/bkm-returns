@@ -120,11 +120,11 @@ function attachAutocomplete(input, box, getList) {
     const q = input.value.trim();
     if (!q) return close();
     const matches = searchNames(getList(), q);
-    box.innerHTML = matches.length
-      ? matches
-          .map((name) => `<li role="option" data-name="${escapeHtml(name)}">${highlight(name, q)}</li>`)
-          .join("")
-      : '<li class="none">No match — it’ll be saved as new</li>';
+    // No matches → hide the dropdown entirely so it doesn't cover the field below.
+    if (!matches.length) return close();
+    box.innerHTML = matches
+      .map((name) => `<li role="option" data-name="${escapeHtml(name)}">${highlight(name, q)}</li>`)
+      .join("");
     box.hidden = false;
     active = -1;
     input.setAttribute("aria-expanded", "true");
