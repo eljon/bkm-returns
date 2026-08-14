@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#ffffff">
   <link rel="manifest" href="manifest.webmanifest">
-  <title>BKM Returns</title>
+  <title>BKM ITEM RETURNS</title>
   <style>
     :root {
       --bg: #f1f5f9;
@@ -88,6 +88,38 @@
     input:focus { border-color: var(--accent); }
 
     input[type="date"] { color-scheme: light; min-height: 52px; }
+
+    /* Customer autocomplete */
+    .combo { position: relative; }
+    .suggest {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      max-height: 46vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      z-index: 30;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.15);
+    }
+    .suggest[hidden] { display: none; }
+    .suggest li {
+      padding: 14px 12px;
+      border-radius: 10px;
+      font-size: 1rem;
+      cursor: pointer;
+      line-height: 1.25;
+    }
+    .suggest li.active,
+    .suggest li:active { background: #eef2f7; }
+    .suggest li mark { background: transparent; color: var(--accent); font-weight: 700; }
+    .suggest .none { color: var(--muted); font-size: 0.9rem; padding: 12px; }
 
     /* Items section */
     .section-label {
@@ -283,8 +315,7 @@
 <body>
   <div class="app">
     <header>
-      <h1>Item Returns</h1>
-      <p>Log a return — saved to Firebase.</p>
+      <h1>BKM ITEM RETURNS</h1>
     </header>
 
     <div class="banner hidden" id="configBanner">
@@ -300,10 +331,14 @@
 
       <div class="field">
         <label for="customer">Customer <span class="req">*</span></label>
-        <input type="text" id="customer" name="customer" list="customerList"
-               placeholder="Start typing a name…" autocapitalize="words"
-               enterkeyhint="next" required>
-        <datalist id="customerList"></datalist>
+        <div class="combo">
+          <input type="text" id="customer" name="customer"
+                 placeholder="Start typing a name…" autocapitalize="characters"
+                 autocomplete="off" autocorrect="off" spellcheck="false"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false"
+                 aria-controls="custSuggest" enterkeyhint="next" required>
+          <ul class="suggest" id="custSuggest" role="listbox" hidden></ul>
+        </div>
       </div>
 
       <div class="field">

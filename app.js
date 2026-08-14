@@ -14,6 +14,7 @@ import {
   runTransaction,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
+import { CUSTOMERS } from "./customers.js";
 
 const RETURNS = "returns";
 const COUNTER = ["counters", "returns"]; // doc holding the running sequence
@@ -25,7 +26,8 @@ const btn = $("submitBtn");
 const toast = $("toast");
 const configBanner = $("configBanner");
 const recentList = $("recentList");
-const customerList = $("customerList");
+const customerInput = $("customer");
+const suggestBox = $("custSuggest");
 const itemsWrap = $("items");
 const addItemBtn = $("addItem");
 const itemTemplate = $("itemTemplate");
@@ -101,6 +103,107 @@ itemsWrap.addEventListener("focusin", (e) => {
 
 // Start with a single item row.
 addItemRow();
+
+// ---- Customer autocomplete (in-memory, no network) --------------------------
+const SUGGEST_MAX = 10;
+let activeIdx = -1; // highlighted suggestion for keyboard nav
+
+// Return up to SUGGEST_MAX names: prefix matches first, then contains-matches.
+function searchCustomers(q) {
+  const needle = q.toLowerCase();
+  const starts = [];
+  const contains = [];
+  for (const name of CUSTOMERS) {
+    const i = name.toLowerCase().indexOf(needle);
+    if (i === 0) {
+      if (starts.length < SUGGEST_MAX) starts.push(name);
+    } else if (i > 0 && contains.length < SUGGEST_MAX) {
+      contains.push(name);
+    }
+    if (starts.length >= SUGGEST_MAX) break;
+  }
+  return starts.concat(contains).slice(0, SUGGEST_MAX);
+}
+
+function highlight(name, q) {
+  const i = name.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return escapeHtml(name);
+  return (
+    escapeHtml(name.slice(0, i)) +
+    "<mark>" +
+    escapeHtml(name.slice(i, i + q.length)) +
+    "</mark>" +
+    escapeHtml(name.slice(i + q.length))
+  );
+}
+
+function closeSuggest() {
+  suggestBox.hidden = true;
+  suggestBox.innerHTML = "";
+  activeIdx = -1;
+  customerInput.setAttribute("aria-expanded", "false");
+}
+
+function openSuggest() {
+  const q = customerInput.value.trim();
+  if (!q) return closeSuggest();
+
+  const matches = searchCustomers(q);
+  if (!matches.length) {
+    suggestBox.innerHTML = '<li class="none">No matching customer</li>';
+  } else {
+    suggestBox.innerHTML = matches
+      .map(
+        (name, i) =>
+          `<li role="option" data-name="${escapeHtml(name)}" data-i="${i}">${highlight(name, q)}</li>`
+      )
+      .join("");
+  }
+  suggestBox.hidden = false;
+  activeIdx = -1;
+  customerInput.setAttribute("aria-expanded", "true");
+}
+
+function chooseCustomer(name) {
+  customerInput.value = name;
+  closeSuggest();
+}
+
+customerInput.addEventListener("input", openSuggest);
+customerInput.addEventListener("focus", () => {
+  if (customerInput.value.trim()) openSuggest();
+});
+
+// Keep the tap from blurring the input before the click registers.
+suggestBox.addEventListener("mousedown", (e) => e.preventDefault());
+suggestBox.addEventListener("click", (e) => {
+  const li = e.target.closest("li[data-name]");
+  if (li) chooseCustomer(li.dataset.name);
+});
+
+customerInput.addEventListener("keydown", (e) => {
+  if (suggestBox.hidden) return;
+  const opts = [...suggestBox.querySelectorAll("li[data-name]")];
+  if (!opts.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    activeIdx += e.key === "ArrowDown" ? 1 : -1;
+    if (activeIdx < 0) activeIdx = opts.length - 1;
+    if (activeIdx >= opts.length) activeIdx = 0;
+    opts.forEach((o, i) => o.classList.toggle("active", i === activeIdx));
+    opts[activeIdx].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter" && activeIdx >= 0) {
+    e.preventDefault();
+    chooseCustomer(opts[activeIdx].dataset.name);
+  } else if (e.key === "Escape") {
+    closeSuggest();
+  }
+});
+
+// Close when tapping/clicking outside the field.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".combo")) closeSuggest();
+});
 
 // ---- Guard against an unconfigured project ----------------------------------
 const isConfigured =
@@ -182,10 +285,8 @@ async function loadRecent() {
 
     // Group documents by transaction number, keeping newest-first order.
     const groups = new Map();
-    const customers = new Set();
     snap.forEach((docSnap) => {
       const r = docSnap.data();
-      if (r.customer) customers.add(r.customer);
       const key = r.txnNo || docSnap.id; // fall back for pre-transaction records
       if (!groups.has(key)) {
         groups.set(key, {
@@ -200,14 +301,6 @@ async function loadRecent() {
     });
 
     recentList.innerHTML = [...groups.values()].slice(0, 12).map(renderTxnCard).join("");
-
-    // Refresh customer autocomplete from what we've seen.
-    customerList.innerHTML = "";
-    [...customers].sort().forEach((name) => {
-      const opt = document.createElement("option");
-      opt.value = name;
-      customerList.appendChild(opt);
-    });
   } catch (err) {
     console.error(err);
     recentList.innerHTML = '<li class="empty">Could not load recent returns.</li>';

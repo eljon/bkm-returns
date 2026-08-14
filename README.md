@@ -6,7 +6,8 @@ A mobile-first web app for logging item returns, backed by
 Each submission records:
 
 - **Date** — defaults to today
-- **Customer** — text field with autocomplete pulled from recent returns
+- **Customer** — text field with instant autocomplete from a bundled customer
+  list (`customers.js`, held in memory — no database round-trip)
 - **Item**
 - **QTY** — with a +/- stepper
 - **DR #** — delivery-receipt number (optional)
@@ -25,6 +26,7 @@ with Firestore as the database.
 | ----------------------- | ---------------------------------------------- |
 | `index.html`            | Mobile UI (HTML + CSS)                          |
 | `app.js`                | Firestore reads/writes (Firebase modular SDK)  |
+| `customers.js`          | Bundled customer list for in-memory autocomplete |
 | `firebase-config.js`    | Your project's web config                       |
 | `manifest.webmanifest`  | PWA manifest for "Add to Home Screen"           |
 | `.nojekyll`             | Tells GitHub Pages to serve files as-is         |
