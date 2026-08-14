@@ -274,23 +274,31 @@
     #recentList, #srList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
     .sr-hint { color: var(--muted); font-size: 0.85rem; margin: 0 4px 12px; }
     .sr-items { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-    .sr-item { display: flex; align-items: center; gap: 11px; padding: 9px 2px; cursor: pointer; }
-    /* Custom checkbox — native ones render inconsistently (invisible on iOS). */
+    .sr-item { position: relative; display: flex; align-items: center; gap: 11px; padding: 9px 2px; cursor: pointer; }
+    /* A real but invisible checkbox overlays the whole row; a sibling <span>
+       shows the state. Styling the checkbox itself renders invisibly on iOS. */
     .sr-check {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
       -webkit-appearance: none;
       appearance: none;
+    }
+    .sr-box {
+      flex: 0 0 auto;
       width: 24px;
       height: 24px;
-      flex: 0 0 auto;
-      margin: 0;
       border: 2px solid var(--border);
       border-radius: 6px;
       background: var(--field);
       position: relative;
-      cursor: pointer;
+      display: inline-block;
     }
-    .sr-check:checked { background: var(--accent); border-color: var(--accent); }
-    .sr-check:checked::after {
+    .sr-check:checked + .sr-box { background: var(--accent); border-color: var(--accent); }
+    .sr-check:checked + .sr-box::after {
       content: "";
       position: absolute;
       left: 8px;
@@ -385,7 +393,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v2.5</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v2.6</span></h1>
     </header>
 
     <nav class="tabs">
@@ -496,6 +504,6 @@
   </template>
 
   <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
-  <script type="module" src="app.js?v=2.5"></script>
+  <script type="module" src="app.js?v=2.6"></script>
 </body>
 </html>

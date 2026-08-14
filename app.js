@@ -400,6 +400,7 @@ function srCard(card, i) {
         `<li>
            <label class="sr-item">
              <input type="checkbox" class="sr-check" data-id="${escapeHtml(it.id)}" checked>
+             <span class="sr-box"></span>
              <span class="sr-item-text">${escapeHtml(it.item)}
                <span class="muted">${escapeHtml(it.supplier || "")} · ×${escapeHtml(it.qty)}</span>
              </span>
