@@ -16,22 +16,22 @@ customer names you enter feed the autocomplete over time.
 
 The whole app is static HTML/CSS/JS (no build step) that talks directly to
 Firestore from the browser, so it can be hosted anywhere that serves static
-files. This repo is set up for **GitHub Pages** (the `docs/` folder), with
-Firestore as the database.
+files. This repo is set up for **GitHub Pages** (served from the repo root),
+with Firestore as the database.
 
 ## Project layout
 
-| Path                        | Purpose                                        |
-| --------------------------- | ---------------------------------------------- |
-| `docs/index.html`           | Mobile UI (HTML + CSS)                          |
-| `docs/app.js`               | Firestore reads/writes (Firebase modular SDK)  |
-| `docs/firebase-config.js`   | Your project's web config                       |
-| `docs/manifest.webmanifest` | PWA manifest for "Add to Home Screen"           |
-| `docs/.nojekyll`            | Tells GitHub Pages to serve files as-is         |
-| `firestore.rules`           | Security rules for the `returns` collection     |
-| `firestore.indexes.json`    | Firestore index definitions (none needed yet)   |
-| `firebase.json`             | Firestore config (used by the Firebase CLI)     |
-| `.firebaserc`               | Default Firebase project alias                  |
+| Path                    | Purpose                                        |
+| ----------------------- | ---------------------------------------------- |
+| `index.html`            | Mobile UI (HTML + CSS)                          |
+| `app.js`                | Firestore reads/writes (Firebase modular SDK)  |
+| `firebase-config.js`    | Your project's web config                       |
+| `manifest.webmanifest`  | PWA manifest for "Add to Home Screen"           |
+| `.nojekyll`             | Tells GitHub Pages to serve files as-is         |
+| `firestore.rules`       | Security rules for the `returns` collection     |
+| `firestore.indexes.json`| Firestore index definitions (none needed yet)   |
+| `firebase.json`         | Firestore config (used by the Firebase CLI)     |
+| `.firebaserc`           | Default Firebase project alias                  |
 
 > GitHub Pages hosts the **website**. It does **not** deploy the Firestore
 > **security rules** — those have to be published to Firebase separately (see
@@ -64,7 +64,7 @@ returns/{autoId}
 
 ### 2. Wire up the config
 
-Paste your values into [`docs/firebase-config.js`](docs/firebase-config.js),
+Paste your values into [`firebase-config.js`](firebase-config.js),
 replacing the `YOUR_*` placeholders. Also set your project id in
 [`.firebaserc`](.firebaserc).
 
@@ -91,7 +91,7 @@ Without this step the database stays locked and the app can't read or write.
 
 1. GitHub repo → **Settings → Pages**.
 2. Under **Build and deployment → Source**, choose **Deploy from a branch**.
-3. **Branch:** pick the branch these files are on, **Folder:** `/docs`.
+3. **Branch:** pick the branch these files are on, **Folder:** `/ (root)`.
 4. Click **Save**. After a minute Pages shows your live URL, e.g.
    `https://<your-user>.github.io/bkm-returns/`.
 
@@ -121,6 +121,6 @@ allow create: if request.auth != null && isValidReturn(request.resource.data);
 
 ## Updating
 
-Edit files under `docs/` and push — GitHub Pages redeploys automatically and
+Edit the site files and push — GitHub Pages redeploys automatically and
 keeps the same URL. If you change `firestore.rules`, re-publish them in the
 Firestore **Rules** tab (or `firebase deploy --only firestore:rules`).
