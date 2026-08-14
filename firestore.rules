@@ -20,8 +20,11 @@ service cloud.firestore {
       // Allow creating a well-formed return.
       allow create: if isValidReturn(request.resource.data);
 
-      // Records are immutable once written.
-      allow update, delete: if false;
+      // The only allowed edit is stamping/changing the SR number; everything
+      // else stays immutable, and records can't be deleted.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sr'])
+        && request.resource.data.sr is string;
+      allow delete: if false;
     }
 
     // Running sequence used to number transactions (R-0001, R-0002, …).
@@ -63,6 +66,7 @@ service cloud.firestore {
       && data.item.size() > 0
       && data.supplier is string
       && data.supplier.size() > 0
+      && data.sr is string
       && data.condition in ['Good', 'Defective']
       && data.qty is int
       && data.qty >= 1

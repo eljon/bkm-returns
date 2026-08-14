@@ -15,6 +15,7 @@ import {
   limit,
   serverTimestamp,
   runTransaction,
+  writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { CUSTOMERS } from "./customers.js";
@@ -33,6 +34,7 @@ const addItemBtn = $("addItem");
 const itemTemplate = $("itemTemplate");
 const customerInput = $("customer");
 const searchInput = $("search");
+const srList = $("srList");
 
 // ---- Default the date to today (local) --------------------------------------
 (function setToday() {
@@ -247,13 +249,13 @@ attachAutocomplete(customerInput, $("customerSuggest"), () => customers.names);
 
 // ---- Tabs -------------------------------------------------------------------
 const tabButtons = [...document.querySelectorAll(".tab")];
-const panels = { input: $("tab-input"), history: $("tab-history") };
+const panels = { input: $("tab-input"), sr: $("tab-sr"), history: $("tab-history") };
 tabButtons.forEach((b) =>
   b.addEventListener("click", () => {
     const name = b.dataset.tab;
     tabButtons.forEach((x) => x.classList.toggle("active", x === b));
     Object.entries(panels).forEach(([k, el]) => el.classList.toggle("hidden", k !== name));
-    if (name === "history") loadRecent();
+    if (name === "history" || name === "sr") loadTransactions();
   })
 );
 
@@ -315,20 +317,19 @@ loadNames(customers);
 loadNames(items);
 loadNames(suppliers);
 
-// ---- History (grouped by transaction, searchable) ---------------------------
-const HISTORY_MAX = 1000; // documents pulled into memory for the History tab
-const HISTORY_SHOW = 50; // transactions rendered at once
+// ---- Transactions (shared by SR + History tabs) -----------------------------
+const HISTORY_MAX = 1000; // documents pulled into memory
+const HISTORY_SHOW = 50; // transactions rendered at once in History
 let allTxns = []; // grouped transactions, newest first (in memory)
+let srPending = []; // transactions currently shown in the SR tab
 
 function condBadge(c) {
   if (!c) return "";
   return `<span class="badge ${c === "Defective" ? "bad" : "good"}">${escapeHtml(c)}</span>`;
 }
 
-function renderTxnCard(g) {
-  const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
-  const txn = g.txnNo ? ` · ${escapeHtml(g.txnNo)}` : "";
-  const lines = g.items
+function renderLines(g) {
+  return g.items
     .map(
       (it) =>
         `<li class="r-line">
@@ -340,21 +341,28 @@ function renderTxnCard(g) {
          </li>`
     )
     .join("");
+}
+
+function renderTxnCard(g) {
+  const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
+  const sr = g.sr ? ` · SR ${escapeHtml(g.sr)}` : "";
+  const txn = g.txnNo ? ` · ${escapeHtml(g.txnNo)}` : "";
   const n = g.items.length;
   return `<li class="txn">
      <div class="r-top">
        <span class="r-cust">${escapeHtml(g.customer)}</span>
        <span class="r-count">${n} item${n > 1 ? "s" : ""}</span>
      </div>
-     <ul class="r-lines">${lines}</ul>
-     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${txn}</div>
+     <ul class="r-lines">${renderLines(g)}</ul>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${sr}${txn}</div>
    </li>`;
 }
 
-// Does a transaction match the search query (customer / supplier / item / DR / #)?
+// ---- History (searchable) ---------------------------------------------------
 function txnMatches(g, q) {
   if (g.customer && g.customer.toLowerCase().includes(q)) return true;
   if (g.drNumber && g.drNumber.toLowerCase().includes(q)) return true;
+  if (g.sr && g.sr.toLowerCase().includes(q)) return true;
   if (g.txnNo && g.txnNo.toLowerCase().includes(q)) return true;
   return g.items.some(
     (it) =>
@@ -363,7 +371,6 @@ function txnMatches(g, q) {
   );
 }
 
-// Render (from memory) applying the current search box — runs on each keystroke.
 function renderHistory() {
   const q = (searchInput.value || "").trim().toLowerCase();
   const list = q ? allTxns.filter((g) => txnMatches(g, q)) : allTxns;
@@ -382,9 +389,77 @@ function renderHistory() {
 
 searchInput.addEventListener("input", renderHistory);
 
-async function loadRecent() {
+// ---- SR tab (transactions needing an SR number) -----------------------------
+// A transaction needs an SR only if it has neither an SR nor a DR yet.
+function needsSr(g) {
+  return !g.sr && !g.drNumber;
+}
+
+function srCard(g, i) {
+  const n = g.items.length;
+  return `<li class="txn">
+     <div class="r-top">
+       <span class="r-cust">${escapeHtml(g.customer)}</span>
+       <span class="r-count">${escapeHtml(g.txnNo || "")}</span>
+     </div>
+     <ul class="r-lines">${renderLines(g)}</ul>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))} · ${n} item${n > 1 ? "s" : ""}</div>
+     <div class="sr-add">
+       <input type="text" class="sr-input" placeholder="SR # *" autocomplete="off"
+              autocapitalize="characters" spellcheck="false" enterkeyhint="done">
+       <button type="button" class="sr-save" data-i="${i}">Save</button>
+     </div>
+   </li>`;
+}
+
+function renderSr() {
+  srPending = allTxns.filter(needsSr);
+  if (!srPending.length) {
+    srList.innerHTML = '<li class="empty">All caught up — every transaction has an SR or a DR.</li>';
+    return;
+  }
+  srList.innerHTML = srPending.map((g, i) => srCard(g, i)).join("");
+}
+
+srList.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".sr-save");
+  if (!btn) return;
+  const g = srPending[+btn.dataset.i];
+  if (!g || !db) return;
+
+  const input = btn.closest(".sr-add").querySelector(".sr-input");
+  const sr = input.value.trim();
+  if (!sr) return showToast("Enter an SR number", "err");
+  if (!g.ids || !g.ids.length) return showToast("Reopen the SR tab and try again", "err");
+
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    // Stamp the SR onto every line-item document of this transaction.
+    const batch = writeBatch(db);
+    g.ids.forEach((id) => batch.update(doc(db, RETURNS, id), { sr }));
+    await batch.commit();
+    g.sr = sr;
+    showToast(`SR added${g.txnNo ? " to " + g.txnNo : ""} ✓`, "ok");
+    renderSr();
+    renderHistory();
+  } catch (err) {
+    console.error(err);
+    const msg =
+      err?.code === "permission-denied"
+        ? "Save blocked — re-publish the Firestore rules"
+        : err?.message || "Save failed — try again";
+    showToast(msg, "err");
+    btn.disabled = false;
+    btn.textContent = "Save";
+  }
+});
+
+// ---- Load all transactions into memory (for SR + History) -------------------
+async function loadTransactions() {
   if (!db) return;
   recentList.innerHTML = '<li class="empty">Loading…</li>';
+  srList.innerHTML = '<li class="empty">Loading…</li>';
   try {
     const snap = await getDocs(
       query(collection(db, RETURNS), orderBy("createdAt", "desc"), limit(HISTORY_MAX))
@@ -398,17 +473,23 @@ async function loadRecent() {
           txnNo: r.txnNo || "",
           customer: r.customer,
           date: r.date,
-          drNumber: r.drNumber,
+          drNumber: r.drNumber || "",
+          sr: r.sr || "",
+          ids: [],
           items: [],
         });
       }
-      groups.get(key).items.push({ item: r.item, supplier: r.supplier || "", condition: r.condition, qty: r.qty });
+      const g = groups.get(key);
+      g.ids.push(docSnap.id);
+      g.items.push({ item: r.item, supplier: r.supplier || "", condition: r.condition, qty: r.qty });
     });
     allTxns = [...groups.values()];
     renderHistory();
+    renderSr();
   } catch (err) {
     console.error(err);
-    recentList.innerHTML = '<li class="empty">Could not load recent returns.</li>';
+    recentList.innerHTML = '<li class="empty">Could not load returns.</li>';
+    srList.innerHTML = '<li class="empty">Could not load returns.</li>';
   }
 }
 
@@ -470,6 +551,7 @@ form.addEventListener("submit", async (e) => {
           customer,
           supplier: it.supplier,
           drNumber,
+          sr: "",
           item: it.item,
           condition: it.condition,
           qty: it.qty,
@@ -488,12 +570,15 @@ form.addEventListener("submit", async (e) => {
       rememberName(suppliers, it.supplier);
     });
 
-    // Keep History current without another read: prepend the new transaction.
+    // Keep History/SR current without another read: prepend the new transaction.
+    // ids is left empty; opening the SR/History tab reloads with real doc ids.
     allTxns.unshift({
       txnNo,
       customer,
       date,
       drNumber,
+      sr: "",
+      ids: [],
       items: lineItems.map((it) => ({
         item: it.item,
         supplier: it.supplier,

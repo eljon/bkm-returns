@@ -16,8 +16,9 @@ Each submission records:
 Field labels double as placeholders for a compact form. The Customer, Item and
 Supplier names you enter are remembered and shared across devices (via the
 `customers` / `items` / `suppliers` collections) so they become suggestions
-everywhere. The UI has two tabs: **Input** (the form) and **History** (recent
-returns, grouped by transaction).
+everywhere. The UI has three tabs: **Input** (the form), **SR** (transactions
+still needing an SR number), and **History** (recent returns, grouped by
+transaction, with live search).
 
 The whole app is static HTML/CSS/JS (no build step) that talks directly to
 Firestore from the browser, so it can be hosted anywhere that serves static
@@ -55,13 +56,18 @@ returns/{autoId}
   seq:       42              // integer, the running transaction number
   date:      "2026-08-14"    // string, YYYY-MM-DD
   customer:  "Acme Corp"      // string
-  supplier:  "Globe Parts"    // string ("" when omitted)
+  supplier:  "Globe Parts"    // string (per item)
   item:      "Coffee Mug"     // string
   condition: "Good"           // "Good" | "Defective"
   qty:       3                // integer >= 1
   drNumber:  "DR-1024"        // string ("" when omitted)
+  sr:        "SR-77"          // string ("" until added later in the SR tab)
   createdAt: <server timestamp>
 ```
+
+The **SR** tab lists transactions that have neither an SR nor a DR and lets you
+stamp an SR number onto all of a transaction's line items (the one allowed edit
+— every other field stays immutable).
 
 Suggestion names live in their own collections — `customers/`, `items/` and
 `suppliers/` — each holding `{ name, createdAt }` documents.
