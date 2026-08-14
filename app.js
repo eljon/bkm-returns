@@ -174,8 +174,10 @@ customerInput.addEventListener("focus", () => {
   if (customerInput.value.trim()) openSuggest();
 });
 
-// Keep the tap from blurring the input before the click registers.
-suggestBox.addEventListener("mousedown", (e) => e.preventDefault());
+// Select on click. (We intentionally do NOT preventDefault on mousedown/
+// touchstart: on iOS that cancels the synthesized click, which broke tapping
+// a suggestion on mobile. Nothing closes the list on blur, so click is safe,
+// and using click — not pointer/touch events — keeps list scrolling working.)
 suggestBox.addEventListener("click", (e) => {
   const li = e.target.closest("li[data-name]");
   if (li) chooseCustomer(li.dataset.name);
