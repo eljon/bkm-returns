@@ -358,24 +358,20 @@ function renderTxnCard(g) {
 }
 
 // ---- History (searchable) ---------------------------------------------------
-function txnMatches(g, q) {
-  if (g.customer && g.customer.toLowerCase().includes(q)) return true;
-  if (g.drNumber && g.drNumber.toLowerCase().includes(q)) return true;
-  if (g.txnNo && g.txnNo.toLowerCase().includes(q)) return true;
-  return g.items.some(
-    (it) =>
-      (it.item && it.item.toLowerCase().includes(q)) ||
-      (it.supplier && it.supplier.toLowerCase().includes(q)) ||
-      (it.sr && it.sr.toLowerCase().includes(q))
-  );
+// Every whitespace-separated term must match somewhere in the transaction (AND).
+function txnMatches(g, terms) {
+  const parts = [g.customer, g.drNumber, g.txnNo];
+  for (const it of g.items) parts.push(it.item, it.supplier, it.sr);
+  const hay = parts.filter(Boolean).join(" ").toLowerCase();
+  return terms.every((t) => hay.includes(t));
 }
 
 function renderHistory() {
-  const q = (searchInput.value || "").trim().toLowerCase();
-  const list = q ? allTxns.filter((g) => txnMatches(g, q)) : allTxns;
+  const terms = (searchInput.value || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const list = terms.length ? allTxns.filter((g) => txnMatches(g, terms)) : allTxns;
 
   if (!list.length) {
-    recentList.innerHTML = `<li class="empty">${q ? "No matching returns." : "No returns logged yet."}</li>`;
+    recentList.innerHTML = `<li class="empty">${terms.length ? "No matching returns." : "No returns logged yet."}</li>`;
     return;
   }
   const shown = list.slice(0, HISTORY_SHOW);
