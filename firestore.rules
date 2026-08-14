@@ -62,6 +62,7 @@ service cloud.firestore {
       && data.item is string
       && data.item.size() > 0
       && data.supplier is string
+      && data.supplier.size() > 0
       && data.condition in ['Good', 'Defective']
       && data.qty is int
       && data.qty >= 1

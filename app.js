@@ -32,7 +32,6 @@ const itemsWrap = $("items");
 const addItemBtn = $("addItem");
 const itemTemplate = $("itemTemplate");
 const customerInput = $("customer");
-const supplierInput = $("supplier");
 
 // ---- Default the date to today (local) --------------------------------------
 (function setToday() {
@@ -174,9 +173,21 @@ document.addEventListener("click", (e) => {
 
 // ---- Item rows --------------------------------------------------------------
 function addItemRow() {
+  // Carry the supplier from the last item so a new item pre-fills it.
+  const cards = itemsWrap.querySelectorAll(".item-card");
+  const prevSupplier = cards.length
+    ? cards[cards.length - 1].querySelector(".i-supplier").value.trim()
+    : "";
+
   const node = itemTemplate.content.firstElementChild.cloneNode(true);
   itemsWrap.appendChild(node);
-  attachAutocomplete(node.querySelector(".i-item"), node.querySelector(".suggest"), () => items.names);
+
+  const itemInput = node.querySelector(".i-item");
+  const supInput = node.querySelector(".i-supplier");
+  attachAutocomplete(itemInput, itemInput.closest(".combo").querySelector(".suggest"), () => items.names);
+  attachAutocomplete(supInput, supInput.closest(".combo").querySelector(".suggest"), () => suppliers.names);
+  if (prevSupplier) supInput.value = prevSupplier;
+
   refreshRows();
   return node;
 }
@@ -220,16 +231,18 @@ itemsWrap.addEventListener("click", (e) => {
   }
 });
 
-// Select the QTY value on focus so typing replaces the default 1.
+// Select QTY and the (pre-filled) Supplier on focus so a tap lets you overtype
+// the whole value instead of erasing it letter by letter.
 itemsWrap.addEventListener("focusin", (e) => {
-  if (e.target.classList.contains("i-qty")) e.target.select();
+  if (e.target.classList.contains("i-qty") || e.target.classList.contains("i-supplier")) {
+    e.target.select();
+  }
 });
 
 addItemRow(); // start with one item
 
-// Attach autocomplete to the header fields.
+// Attach autocomplete to the customer field.
 attachAutocomplete(customerInput, $("customerSuggest"), () => customers.names);
-attachAutocomplete(supplierInput, $("supplierSuggest"), () => suppliers.names);
 
 // ---- Tabs -------------------------------------------------------------------
 const tabButtons = [...document.querySelectorAll(".tab")];
@@ -379,7 +392,6 @@ form.addEventListener("submit", async (e) => {
 
   const date = $("date").value;
   const customer = customerInput.value.trim();
-  const supplier = supplierInput.value.trim();
   const drNumber = $("drNumber").value.trim();
 
   if (!date) return showToast("Date is required", "err");
@@ -390,15 +402,17 @@ form.addEventListener("submit", async (e) => {
   for (let i = 0; i < cards.length; i++) {
     const c = cards[i];
     const item = c.querySelector(".i-item").value.trim();
+    const supplier = c.querySelector(".i-supplier").value.trim();
     const activeBtn = c.querySelector(".seg-btn.active");
     const cond = activeBtn ? activeBtn.dataset.value : null;
     const qty = parseInt(c.querySelector(".i-qty").value, 10) || 0;
 
     if (!item) return showToast(`Item ${i + 1}: name is required`, "err");
+    if (!supplier) return showToast(`Item ${i + 1}: supplier is required`, "err");
     if (!cond) return showToast(`Item ${i + 1}: choose Good or Defective`, "err");
     if (qty < 1) return showToast(`Item ${i + 1}: QTY must be at least 1`, "err");
 
-    lineItems.push({ item, condition: cond, qty });
+    lineItems.push({ item, supplier, condition: cond, qty });
   }
 
   btn.disabled = true;
@@ -420,7 +434,7 @@ form.addEventListener("submit", async (e) => {
           seq: next,
           date,
           customer,
-          supplier,
+          supplier: it.supplier,
           drNumber,
           item: it.item,
           condition: it.condition,
@@ -435,8 +449,10 @@ form.addEventListener("submit", async (e) => {
 
     // Remember any new names for future suggestions (shared across devices).
     rememberName(customers, customer);
-    if (supplier) rememberName(suppliers, supplier);
-    lineItems.forEach((it) => rememberName(items, it.item));
+    lineItems.forEach((it) => {
+      rememberName(items, it.item);
+      rememberName(suppliers, it.supplier);
+    });
 
     resetForm();
     loadRecent();
@@ -455,7 +471,6 @@ form.addEventListener("submit", async (e) => {
 
 function resetForm() {
   customerInput.value = "";
-  supplierInput.value = "";
   $("drNumber").value = "";
   itemsWrap.innerHTML = "";
   addItemRow();

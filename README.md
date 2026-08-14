@@ -8,9 +8,9 @@ Each submission records:
 - **Date** — defaults to today
 - **Customer** — autocomplete from a bundled list (`customers.js`, held in
   memory — no database round-trip) plus any names added later
-- **Supplier** — optional, autocomplete that grows as you type new suppliers
 - **DR #** — delivery-receipt number (optional)
-- One or more **Items**, each with **Item** (autocomplete), **Condition**
+- One or more **Items**, each with **Item** (autocomplete), **Supplier**
+  (required, autocomplete, pre-filled from the previous item), **Condition**
   (Good / Defective) and **QTY** (with a +/- stepper)
 
 Field labels double as placeholders for a compact form. The Customer, Item and
