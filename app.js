@@ -697,24 +697,41 @@ async function maintenanceCleanup() {
     return;
   }
 
-  try {
-    const ops = [
-      ...delIds.map((id) => ({ t: "del", id })),
-      ...clrIds.map((id) => ({ t: "clr", id })),
-    ];
-    for (let i = 0; i < ops.length; i += 400) {
+  // Run the two operations as separate passes so one failing (e.g. deletes
+  // blocked by rules) doesn't stop the other, and we can report which failed.
+  async function runBatched(ids, apply) {
+    let done = 0;
+    for (let i = 0; i < ids.length; i += 400) {
+      const chunk = ids.slice(i, i + 400);
       const batch = writeBatch(db);
-      for (const op of ops.slice(i, i + 400)) {
-        if (op.t === "del") batch.delete(doc(db, RETURNS, op.id));
-        else batch.update(doc(db, RETURNS, op.id), { sr: "" });
-      }
+      chunk.forEach((id) => apply(batch, id));
       await batch.commit();
+      done += chunk.length;
     }
-    window.alert(`Done — deleted ${delIds.length} record(s), cleared ${clrIds.length} SR(s).`);
+    return done;
+  }
+
+  let clrDone = 0;
+  let delDone = 0;
+  const problems = [];
+  try {
+    clrDone = await runBatched(clrIds, (b, id) => b.update(doc(db, RETURNS, id), { sr: "" }));
   } catch (err) {
     console.error(err);
-    window.alert("Cleanup failed: " + (err?.code || err?.message || err));
+    problems.push("clear SRs (" + (err?.code || err?.message) + ")");
   }
+  try {
+    delDone = await runBatched(delIds, (b, id) => b.delete(doc(db, RETURNS, id)));
+  } catch (err) {
+    console.error(err);
+    problems.push("delete records (" + (err?.code || err?.message) + ")");
+  }
+
+  let msg = `Cleared ${clrDone}/${clrIds.length} SR(s); deleted ${delDone}/${delIds.length} record(s).`;
+  if (problems.length) {
+    msg += `\n\nBlocked: ${problems.join("; ")}.\nMake sure the updated Firestore rules (with the delete line) are published, then reopen #cleanup.`;
+  }
+  window.alert(msg);
   location.hash = "history";
 }
 

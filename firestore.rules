@@ -27,7 +27,8 @@ service cloud.firestore {
 
       // Cleanup: only the early test records (transaction R-0010 and earlier)
       // may be deleted. Once they're gone this rule permits nothing.
-      allow delete: if resource.data.seq is int && resource.data.seq <= 10;
+      allow delete: if (resource.data.seq is int || resource.data.seq is float)
+        && resource.data.seq <= 10;
     }
 
     // Running sequence used to number transactions (R-0001, R-0002, …).
