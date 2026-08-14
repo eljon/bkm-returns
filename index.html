@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#ffffff">
   <link rel="manifest" href="manifest.webmanifest">
   <title>BKM Returns</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --card: #1e293b;
-      --field: #0f172a;
-      --border: #334155;
-      --text: #f1f5f9;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --accent-press: #0ea5e9;
-      --ok: #22c55e;
-      --err: #ef4444;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --field: #ffffff;
+      --border: #cbd5e1;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #0284c7;
+      --accent-press: #0369a1;
+      --ok: #16a34a;
+      --err: #dc2626;
       --radius: 14px;
     }
 
@@ -87,8 +87,33 @@
     }
     input:focus { border-color: var(--accent); }
 
-    /* keep date control legible on iOS dark mode */
-    input[type="date"] { color-scheme: dark; min-height: 52px; }
+    input[type="date"] { color-scheme: light; min-height: 52px; }
+
+    /* Good / Defective segmented picker */
+    .segment {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .seg-btn {
+      background: var(--field);
+      border: 1.5px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius);
+      padding: 15px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 54px;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    .seg-btn:active { background: #f1f5f9; }
+    .seg-btn.active[data-value="Good"] {
+      background: var(--ok); border-color: var(--ok); color: #fff;
+    }
+    .seg-btn.active[data-value="Defective"] {
+      background: var(--err); border-color: var(--err); color: #fff;
+    }
 
     /* Quantity stepper */
     .qty {
@@ -108,7 +133,7 @@
       cursor: pointer;
       user-select: none;
     }
-    .qty button:active { background: var(--border); }
+    .qty button:active { background: #f1f5f9; }
     .qty input { text-align: center; }
     .qty input::-webkit-outer-spin-button,
     .qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -117,7 +142,7 @@
     .submit {
       margin-top: 4px;
       background: var(--accent);
-      color: #04293a;
+      color: #fff;
       border: none;
       border-radius: var(--radius);
       padding: 17px;
@@ -133,8 +158,8 @@
     .spinner {
       display: inline-block;
       width: 18px; height: 18px;
-      border: 2.5px solid rgba(4,41,58,0.35);
-      border-top-color: #04293a;
+      border: 2.5px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
       vertical-align: -3px;
@@ -161,7 +186,17 @@
     .recent .r-cust { font-weight: 700; }
     .recent .r-qty { color: var(--accent); font-weight: 700; white-space: nowrap; }
     .recent .r-item { color: var(--text); font-size: 0.95rem; margin-top: 2px; }
-    .recent .r-meta { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+    .recent .r-meta { color: var(--muted); font-size: 0.8rem; margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .badge.good { background: #dcfce7; color: #166534; }
+    .badge.bad { background: #fee2e2; color: #991b1b; }
     .recent .empty { color: var(--muted); font-size: 0.9rem; padding: 4px; }
 
     /* Toast */
@@ -178,26 +213,26 @@
       transform: translateY(140%);
       transition: transform 0.28s cubic-bezier(.2,.8,.2,1);
       z-index: 50;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      box-shadow: 0 10px 30px rgba(15,23,42,0.18);
     }
     .toast.show { transform: translateY(0); }
-    .toast.ok { background: var(--ok); color: #052e16; }
+    .toast.ok { background: var(--ok); color: #fff; }
     .toast.err { background: var(--err); color: #fff; }
 
     .hint { font-size: 0.8rem; color: var(--muted); margin-top: -2px; }
 
     /* Config banner */
     .banner {
-      background: #422006;
-      border: 1.5px solid #b45309;
-      color: #fed7aa;
+      background: #fff7ed;
+      border: 1.5px solid #fdba74;
+      color: #9a3412;
       border-radius: var(--radius);
       padding: 14px 16px;
       font-size: 0.9rem;
       line-height: 1.45;
       margin-bottom: 16px;
     }
-    .banner code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 5px; }
+    .banner code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 5px; }
     .hidden { display: none; }
   </style>
 </head>
@@ -209,7 +244,7 @@
     </header>
 
     <div class="banner hidden" id="configBanner">
-      Firebase isn’t configured yet. Edit <code>public/firebase-config.js</code>
+      Firebase isn’t configured yet. Edit <code>firebase-config.js</code>
       with your project’s config to start saving returns.
     </div>
 
@@ -232,6 +267,14 @@
         <input type="text" id="item" name="item"
                placeholder="e.g. Coffee Mug" autocapitalize="sentences"
                enterkeyhint="next" required>
+      </div>
+
+      <div class="field">
+        <label>Condition <span class="req">*</span></label>
+        <div class="segment" id="condition" role="group" aria-label="Condition">
+          <button type="button" class="seg-btn" data-value="Good" aria-pressed="false">Good</button>
+          <button type="button" class="seg-btn" data-value="Defective" aria-pressed="false">Defective</button>
+        </div>
       </div>
 
       <div class="field">

@@ -37,6 +37,7 @@ service cloud.firestore {
       && data.customer.size() > 0
       && data.item is string
       && data.item.size() > 0
+      && data.condition in ['Good', 'Defective']
       && data.qty is int
       && data.qty >= 1
       && data.drNumber is string
