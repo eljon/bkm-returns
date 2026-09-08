@@ -456,7 +456,7 @@ function condGroups(items) {
 function renderLines(items) {
   return items
     .map((it) => {
-      const meta = [it.supplier || "", it.sr ? "SR " + it.sr : "", it.editedAt ? "edited" : ""]
+      const meta = [it.supplier || "", it.editedAt ? "edited" : ""]
         .filter(Boolean)
         .join(" · ");
       const actions = [];
@@ -476,8 +476,14 @@ function renderLines(items) {
     .join("");
 }
 
+function txnSrSummary(g) {
+  const srs = [...new Set(g.items.map((it) => it.sr).filter(Boolean))];
+  return srs.length ? ` · SR ${srs.map(escapeHtml).join(", ")}` : "";
+}
+
 function renderTxnCard(g) {
   const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
+  const sr = txnSrSummary(g);
   const n = g.items.length;
   const body = condGroups(g.items)
     .map(
@@ -488,15 +494,31 @@ function renderTxnCard(g) {
          </div>`
     )
     .join("");
+  const editBtn =
+    canEdit() && g.txnNo
+      ? `<button type="button" class="mini-btn edit edit-txn" data-txn="${escapeHtml(g.txnNo)}">Edit</button>`
+      : "";
   return `<li class="txn">
-     ${g.txnNo ? `<div class="r-txn">${escapeHtml(g.txnNo)}</div>` : ""}
+     <div class="r-txn-row">
+       <span class="r-txn">${escapeHtml(g.txnNo || "—")}</span>
+       ${editBtn}
+     </div>
      <div class="r-top">
        <span class="r-cust">${escapeHtml(g.customer)}</span>
        <span class="r-count">${n} item${n > 1 ? "s" : ""}</span>
      </div>
      ${body}
-     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}</div>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${sr}</div>
    </li>`;
+}
+
+function findGroup(txnNo) {
+  return allTxns.find((g) => g.txnNo === txnNo) || null;
+}
+
+function uniformSr(g) {
+  const srs = [...new Set(g.items.map((it) => it.sr || ""))];
+  return srs.length === 1 ? srs[0] : "";
 }
 
 // ---- History (searchable) ---------------------------------------------------
@@ -528,6 +550,8 @@ searchInput.addEventListener("input", renderHistory);
 
 // Edit / delete actions on History rows.
 recentList.addEventListener("click", (e) => {
+  const etx = e.target.closest(".edit-txn");
+  if (etx) return openTxnEdit(etx.dataset.txn);
   const ed = e.target.closest(".edit-item");
   if (ed) return openEdit(ed.dataset.id);
   const del = e.target.closest(".del-item");
@@ -732,6 +756,102 @@ async function saveEdit() {
     rememberName(suppliers, next.supplier);
     showToast("Changes saved ✓", "ok");
     closeEdit();
+    await loadTransactions();
+  } catch (err) {
+    console.error(err);
+    showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Save failed", "err");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save changes";
+  }
+}
+
+// ---- Transaction edit modal (shared fields + one SR for all items) ----------
+const txnModal = $("txnModal");
+let editingTxn = null; // txnNo being edited
+
+attachAutocomplete($("txnCustomer"), $("txnCustomerSuggest"), () => customers.names);
+$("txnCustomer").addEventListener("focus", () => $("txnCustomer").select());
+$("txnSr").addEventListener("focus", () => $("txnSr").select());
+$("txnCancel").addEventListener("click", closeTxnEdit);
+txnModal.addEventListener("click", (e) => {
+  if (e.target === txnModal) closeTxnEdit();
+});
+$("txnSave").addEventListener("click", saveTxnEdit);
+
+function closeTxnEdit() {
+  txnModal.hidden = true;
+  editingTxn = null;
+}
+
+function openTxnEdit(txnNo) {
+  if (!canEdit()) return;
+  const g = findGroup(txnNo);
+  if (!g) return;
+  editingTxn = txnNo;
+  $("txnSub").textContent = `${g.txnNo} · ${g.items.length} item${g.items.length > 1 ? "s" : ""}`;
+  $("txnDate").value = g.date || "";
+  $("txnCustomer").value = g.customer || "";
+  $("txnDr").value = g.drNumber || "";
+  $("txnSr").value = uniformSr(g);
+  txnModal.hidden = false;
+}
+
+async function saveTxnEdit() {
+  if (!canEdit() || !db || !editingTxn) return;
+  const g = findGroup(editingTxn);
+  if (!g) return closeTxnEdit();
+
+  const customer = norm($("txnCustomer").value);
+  const date = $("txnDate").value;
+  const drNumber = norm($("txnDr").value);
+  const srVal = $("txnSr").value.trim();
+
+  if (!date) return showToast("Date is required", "err");
+  if (!customer) return showToast("Customer is required", "err");
+
+  // Fields that apply to the whole transaction.
+  const setFields = {};
+  if (customer !== g.customer) setFields.customer = customer;
+  if (date !== g.date) setFields.date = date;
+  if (drNumber !== g.drNumber) setFields.drNumber = drNumber;
+  const srChanged = srVal !== uniformSr(g);
+
+  if (!Object.keys(setFields).length && !srChanged) {
+    closeTxnEdit();
+    return showToast("No changes", "ok");
+  }
+
+  const saveBtn = $("txnSave");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving…";
+  try {
+    const batch = writeBatch(db);
+    for (const it of g.items) {
+      const after = { ...setFields };
+      if (srChanged) after.sr = srVal;
+      const before = {};
+      for (const k of Object.keys(after)) before[k] = it[k];
+      batch.update(doc(db, RETURNS, it.id), {
+        ...after,
+        editedBy: currentUser.username,
+        editedAt: serverTimestamp(),
+        editCount: (it.editCount || 0) + 1,
+      });
+      const histRef = doc(collection(db, EDIT_HISTORY));
+      batch.set(histRef, {
+        returnId: it.id,
+        txnNo: g.txnNo || "",
+        before,
+        after,
+        by: currentUser.username,
+        at: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    if (setFields.customer) rememberName(customers, customer);
+    showToast("Transaction updated ✓", "ok");
+    closeTxnEdit();
     await loadTransactions();
   } catch (err) {
     console.error(err);

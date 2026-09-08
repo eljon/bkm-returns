@@ -267,7 +267,8 @@
     #search { margin-bottom: 12px; }
     #recentList, #srList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
     .txn { padding: 12px 14px; }
-    .r-txn { font-weight: 700; font-size: 0.9rem; color: var(--accent); letter-spacing: 0.3px; margin-bottom: 6px; }
+    .r-txn-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+    .r-txn { font-weight: 700; font-size: 0.9rem; color: var(--accent); letter-spacing: 0.3px; }
     .r-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
     .r-cust { font-weight: 700; }
     .r-count { color: var(--muted); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
@@ -484,7 +485,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v3.6</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v3.7</span></h1>
       <button type="button" class="gear" id="gearBtn" aria-label="Settings">⚙</button>
     </header>
 
@@ -604,6 +605,34 @@
     </div>
   </div>
 
+  <!-- Transaction edit modal -->
+  <div class="modal" id="txnModal" hidden>
+    <div class="modal-card">
+      <h2>Edit transaction</h2>
+      <p class="sub" id="txnSub"></p>
+      <div class="field">
+        <label for="txnDate">Date</label>
+        <input type="date" id="txnDate">
+      </div>
+      <div class="field" style="margin-top:12px">
+        <div class="combo">
+          <input type="text" id="txnCustomer" placeholder="Customer *" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false">
+          <ul class="suggest" id="txnCustomerSuggest" role="listbox" hidden></ul>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <input type="text" id="txnDr" placeholder="DR # (optional)" autocomplete="off">
+      </div>
+      <div class="field" style="margin-top:12px">
+        <input type="text" id="txnSr" placeholder="SR # (applies to all items)" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="txnCancel">Cancel</button>
+        <button type="button" class="submit" id="txnSave" style="margin-top:0">Save changes</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <!-- Template for one item line -->
@@ -651,7 +680,7 @@
   </template>
 
   <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
-  <script type="module" src="app.js?v=3.6"></script>
+  <script type="module" src="app.js?v=3.7"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
