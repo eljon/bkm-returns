@@ -468,6 +468,7 @@ function renderLines(items) {
              <span class="r-line-sup">${escapeHtml(meta)}</span>
            </div>
            <div class="r-line-right">
+             ${it.sr ? `<span class="sr-tag">SR ${escapeHtml(it.sr)}</span>` : ""}
              <span class="r-qty">×${escapeHtml(it.qty)}</span>
              ${actions.length ? `<span class="r-actions">${actions.join("")}</span>` : ""}
            </div>
@@ -476,14 +477,8 @@ function renderLines(items) {
     .join("");
 }
 
-function txnSrSummary(g) {
-  const srs = [...new Set(g.items.map((it) => it.sr).filter(Boolean))];
-  return srs.length ? ` · SR ${srs.map(escapeHtml).join(", ")}` : "";
-}
-
 function renderTxnCard(g) {
   const dr = g.drNumber ? ` · DR ${escapeHtml(g.drNumber)}` : "";
-  const sr = txnSrSummary(g);
   const n = g.items.length;
   const body = condGroups(g.items)
     .map(
@@ -508,7 +503,7 @@ function renderTxnCard(g) {
        <span class="r-count">${n} item${n > 1 ? "s" : ""}</span>
      </div>
      ${body}
-     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}${sr}</div>
+     <div class="r-meta">${escapeHtml(fmtDate(g.date))}${dr}</div>
    </li>`;
 }
 
