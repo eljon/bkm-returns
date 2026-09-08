@@ -33,7 +33,7 @@ const ACCOUNTS = {
   eljon: { pw: "mokong", role: "admin" },
   blezzy: { pw: "blezzy815", role: "admin" },
   lolen: { pw: "lolen123", role: "user" },
-  raysalyn: { pw: "r1234", role: "user" },
+  raysalyn: { pw: "r1234", role: "sr" },
 };
 let currentUser = null; // { username, role }
 try {
@@ -44,6 +44,7 @@ try {
 const isAdmin = () => currentUser?.role === "admin";
 const canEdit = () => currentUser?.role === "admin" || currentUser?.role === "user";
 const canInput = () => canEdit();
+const canAddSr = () => canEdit() || currentUser?.role === "sr"; // SR-only role too
 
 // ---- DOM refs ---------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -310,6 +311,12 @@ window.addEventListener("hashchange", routeFromHash);
 function applyAuth() {
   document.body.classList.toggle("view-only", !canInput());
   btn.disabled = !canInput();
+  const lock = $("inputLock");
+  if (lock) {
+    lock.textContent = currentUser
+      ? "Your account can only add SR numbers (SR tab). Adding returns is disabled."
+      : "You’re in view-only mode. Tap ⚙ to log in before adding returns.";
+  }
 }
 
 function renderAccount() {
@@ -317,7 +324,7 @@ function renderAccount() {
     accountBox.innerHTML = `
       <h2>Account</h2>
       <div>Signed in as <span class="who">${escapeHtml(currentUser.username)}</span>
-        <span class="role-pill">${escapeHtml(currentUser.role)}</span></div>
+        <span class="role-pill">${escapeHtml(currentUser.role === "sr" ? "sr-only" : currentUser.role)}</span></div>
       <button type="button" class="btn-secondary" id="logoutBtn" style="margin-top:14px">Log out</button>`;
     $("logoutBtn").addEventListener("click", logout);
   } else {
@@ -939,7 +946,7 @@ function srCard(card, i) {
      </div>
      <ul class="sr-items">${rows}</ul>
      <div class="r-meta">${escapeHtml(fmtDate(g.date))}</div>
-     ${canEdit()
+     ${canAddSr()
         ? `<div class="sr-add">
        <input type="text" class="sr-input" placeholder="SR # *" autocomplete="off"
               autocapitalize="characters" spellcheck="false" enterkeyhint="done">
@@ -971,7 +978,7 @@ function renderSr() {
 srList.addEventListener("click", async (e) => {
   const btn = e.target.closest(".sr-save");
   if (!btn) return;
-  if (!canEdit()) return showToast("Log in to add SR numbers", "err");
+  if (!canAddSr()) return showToast("Log in to add SR numbers", "err");
   const card = srPending[+btn.dataset.i];
   if (!card || !db) return;
 
