@@ -11,6 +11,7 @@ import {
   addDoc,
   getDocs,
   query,
+  where,
   orderBy,
   limit,
   serverTimestamp,
@@ -21,6 +22,28 @@ import { firebaseConfig } from "./firebase-config.js";
 import { CUSTOMERS } from "./customers.js";
 
 const RETURNS = "returns";
+const EDIT_HISTORY = "editHistory";
+
+// ---- Accounts & roles -------------------------------------------------------
+// NOTE: this is a lightweight, client-side gate for an internal tool. The
+// credentials live in this file (visible in the page source) and the role
+// checks run in the browser — they are not cryptographic security. Real
+// enforcement would require Firebase Authentication + rules based on auth.
+const ACCOUNTS = {
+  eljon: { pw: "mokong", role: "admin" },
+  blezzy: { pw: "blezzy815", role: "admin" },
+  lolen: { pw: "lolen123", role: "user" },
+  raysalyn: { pw: "r1234", role: "user" },
+};
+let currentUser = null; // { username, role }
+try {
+  currentUser = JSON.parse(localStorage.getItem("bkmUser") || "null");
+} catch (e) {
+  currentUser = null;
+}
+const isAdmin = () => currentUser?.role === "admin";
+const canEdit = () => currentUser?.role === "admin" || currentUser?.role === "user";
+const canInput = () => canEdit();
 
 // ---- DOM refs ---------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -35,6 +58,10 @@ const itemTemplate = $("itemTemplate");
 const customerInput = $("customer");
 const searchInput = $("search");
 const srList = $("srList");
+const gearBtn = $("gearBtn");
+const accountBox = $("accountBox");
+const deletedBox = $("deletedBox");
+const deletedList = $("deletedList");
 
 // ---- Default the date to today (local) --------------------------------------
 (function setToday() {
@@ -248,18 +275,24 @@ addItemRow(); // start with one item
 attachAutocomplete(customerInput, $("customerSuggest"), () => customers.names);
 
 // ---- Tabs -------------------------------------------------------------------
-const TAB_NAMES = ["input", "sr", "history"];
+const TAB_NAMES = ["input", "sr", "history", "settings"];
 const tabButtons = [...document.querySelectorAll(".tab")];
-const panels = { input: $("tab-input"), sr: $("tab-sr"), history: $("tab-history") };
+const panels = {
+  input: $("tab-input"),
+  sr: $("tab-sr"),
+  history: $("tab-history"),
+  settings: $("tab-settings"),
+};
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "input";
   tabButtons.forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
   Object.entries(panels).forEach(([k, el]) => el.classList.toggle("hidden", k !== name));
   if (name === "history" || name === "sr") loadTransactions();
+  if (name === "settings") { renderAccount(); if (isAdmin()) loadTransactions(); }
 }
 
-// Hash-based routing: #sr / #history select tabs and make links shareable.
+// Hash-based routing: #sr / #history / #settings select views; links shareable.
 function routeFromHash() {
   const name = (location.hash || "").replace(/^#/, "");
   if (name === "cleanup") return maintenanceCleanup();
@@ -270,7 +303,65 @@ tabButtons.forEach((b) =>
     location.hash = b.dataset.tab; // triggers hashchange → showTab
   })
 );
+gearBtn.addEventListener("click", () => (location.hash = "settings"));
 window.addEventListener("hashchange", routeFromHash);
+
+// ---- Auth UI ----------------------------------------------------------------
+function applyAuth() {
+  document.body.classList.toggle("view-only", !canInput());
+  btn.disabled = !canInput();
+}
+
+function renderAccount() {
+  if (currentUser) {
+    accountBox.innerHTML = `
+      <h2>Account</h2>
+      <div>Signed in as <span class="who">${escapeHtml(currentUser.username)}</span>
+        <span class="role-pill">${escapeHtml(currentUser.role)}</span></div>
+      <button type="button" class="btn-secondary" id="logoutBtn" style="margin-top:14px">Log out</button>`;
+    $("logoutBtn").addEventListener("click", logout);
+  } else {
+    accountBox.innerHTML = `
+      <h2>Log in</h2>
+      <form class="login-form" id="loginForm" autocomplete="off">
+        <input type="text" id="loginUser" placeholder="Username" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <input type="password" id="loginPass" placeholder="Password">
+        <button type="submit" class="submit" style="margin-top:2px">Log in</button>
+      </form>
+      <p class="sub" style="margin:12px 2px 0">Not logged in — you can view records only.</p>`;
+    $("loginForm").addEventListener("submit", login);
+  }
+  // Deleted entries section is admin-only.
+  deletedBox.classList.toggle("hidden", !isAdmin());
+  if (isAdmin()) renderDeleted();
+}
+
+function login(e) {
+  e.preventDefault();
+  const u = $("loginUser").value.trim().toLowerCase();
+  const p = $("loginPass").value;
+  const acc = ACCOUNTS[u];
+  if (!acc || acc.pw !== p) {
+    showToast("Wrong username or password", "err");
+    return;
+  }
+  currentUser = { username: u, role: acc.role };
+  try { localStorage.setItem("bkmUser", JSON.stringify(currentUser)); } catch (err) {}
+  applyAuth();
+  renderAccount();
+  renderHistory();
+  showToast(`Logged in as ${u}`, "ok");
+  location.hash = "input";
+}
+
+function logout() {
+  currentUser = null;
+  try { localStorage.removeItem("bkmUser"); } catch (err) {}
+  applyAuth();
+  renderAccount();
+  renderHistory();
+  showToast("Logged out", "ok");
+}
 
 // ---- Firebase init ----------------------------------------------------------
 const isConfigured =
@@ -335,6 +426,15 @@ const HISTORY_MAX = 1000; // documents pulled into memory
 const HISTORY_SHOW = 50; // transactions rendered at once in History
 let allTxns = []; // grouped transactions, newest first (in memory)
 let srPending = []; // transactions currently shown in the SR tab
+let deletedItems = []; // soft-deleted items, shown in Settings (admin)
+
+function findItem(id) {
+  for (const g of allTxns) {
+    const it = g.items.find((x) => x.id === id);
+    if (it) return it;
+  }
+  return null;
+}
 
 function condBadge(c) {
   if (!c) return "";
@@ -356,13 +456,21 @@ function condGroups(items) {
 function renderLines(items) {
   return items
     .map((it) => {
-      const meta = [it.supplier || "", it.sr ? "SR " + it.sr : ""].filter(Boolean).join(" · ");
+      const meta = [it.supplier || "", it.sr ? "SR " + it.sr : "", it.editedAt ? "edited" : ""]
+        .filter(Boolean)
+        .join(" · ");
+      const actions = [];
+      if (canEdit()) actions.push(`<button type="button" class="mini-btn edit edit-item" data-id="${escapeHtml(it.id)}">Edit</button>`);
+      if (isAdmin()) actions.push(`<button type="button" class="mini-btn del del-item" data-id="${escapeHtml(it.id)}">Delete</button>`);
       return `<li class="r-line">
            <div class="r-line-main">
              <span class="r-line-item">${escapeHtml(it.item)}</span>
              <span class="r-line-sup">${escapeHtml(meta)}</span>
            </div>
-           <span class="r-line-right"><span class="r-qty">×${escapeHtml(it.qty)}</span></span>
+           <div class="r-line-right">
+             <span class="r-qty">×${escapeHtml(it.qty)}</span>
+             ${actions.length ? `<span class="r-actions">${actions.join("")}</span>` : ""}
+           </div>
          </li>`;
     })
     .join("");
@@ -418,6 +526,222 @@ function renderHistory() {
 
 searchInput.addEventListener("input", renderHistory);
 
+// Edit / delete actions on History rows.
+recentList.addEventListener("click", (e) => {
+  const ed = e.target.closest(".edit-item");
+  if (ed) return openEdit(ed.dataset.id);
+  const del = e.target.closest(".del-item");
+  if (del) return softDelete(del.dataset.id);
+});
+
+// ---- Soft delete + restore --------------------------------------------------
+async function softDelete(id) {
+  if (!isAdmin() || !db) return;
+  const it = findItem(id);
+  if (!it) return;
+  if (!window.confirm(`Delete this item?\n\n${it.item} (${it.txnNo})\n\nIt moves to Settings → Deleted entries and can be restored.`)) return;
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = doc(db, RETURNS, id);
+      tx.update(ref, {
+        deleted: true,
+        deletedBy: currentUser.username,
+        deletedAt: serverTimestamp(),
+      });
+    });
+    showToast("Item deleted", "ok");
+    await loadTransactions();
+  } catch (err) {
+    console.error(err);
+    showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Delete failed", "err");
+  }
+}
+
+async function restoreItem(id) {
+  if (!isAdmin() || !db) return;
+  try {
+    await runTransaction(db, async (tx) => {
+      tx.update(doc(db, RETURNS, id), { deleted: false });
+    });
+    showToast("Item restored", "ok");
+    await loadTransactions();
+  } catch (err) {
+    console.error(err);
+    showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Restore failed", "err");
+  }
+}
+
+function renderDeleted() {
+  if (!deletedList) return;
+  if (!deletedItems.length) {
+    deletedList.innerHTML = '<li class="empty">None.</li>';
+    return;
+  }
+  deletedList.innerHTML = deletedItems
+    .map(
+      (it) =>
+        `<li class="r-line">
+           <div class="r-line-main">
+             <span class="r-line-item">${escapeHtml(it.item)} ${condBadge(it.condition)}</span>
+             <span class="r-line-sup">${escapeHtml(it.customer || "")} · ${escapeHtml(it.txnNo || "")} · ×${escapeHtml(it.qty)}${it.deletedBy ? " · by " + escapeHtml(it.deletedBy) : ""}</span>
+           </div>
+           <div class="r-line-right">
+             <button type="button" class="mini-btn restore restore-item" data-id="${escapeHtml(it.id)}">Restore</button>
+           </div>
+         </li>`
+    )
+    .join("");
+}
+
+deletedList.addEventListener("click", (e) => {
+  const b = e.target.closest(".restore-item");
+  if (b) restoreItem(b.dataset.id);
+});
+
+// ---- Edit modal -------------------------------------------------------------
+const editModal = $("editModal");
+let editingId = null;
+let editCondition = null;
+
+attachAutocomplete($("editItem"), $("editItemSuggest"), () => items.names);
+attachAutocomplete($("editSupplier"), $("editSupplierSuggest"), () => suppliers.names);
+
+$("editCondition").addEventListener("click", (e) => {
+  const b = e.target.closest(".seg-btn");
+  if (!b) return;
+  editCondition = b.dataset.value;
+  $("editCondition").querySelectorAll(".seg-btn").forEach((x) => x.classList.toggle("active", x === b));
+});
+$("editQtyMinus").addEventListener("click", () => {
+  const q = $("editQty");
+  q.value = Math.max(1, (parseInt(q.value, 10) || 1) - 1);
+});
+$("editQtyPlus").addEventListener("click", () => {
+  const q = $("editQty");
+  q.value = (parseInt(q.value, 10) || 0) + 1;
+});
+$("editQty").addEventListener("focus", () => $("editQty").select());
+$("editCancel").addEventListener("click", closeEdit);
+editModal.addEventListener("click", (e) => {
+  if (e.target === editModal) closeEdit();
+});
+$("editSave").addEventListener("click", saveEdit);
+
+function closeEdit() {
+  editModal.hidden = true;
+  editingId = null;
+}
+
+async function openEdit(id) {
+  if (!canEdit()) return;
+  const it = findItem(id);
+  if (!it) return;
+  editingId = id;
+  editCondition = it.condition;
+  $("editSub").textContent = `${it.txnNo} · ${it.customer}`;
+  $("editItem").value = it.item;
+  $("editSupplier").value = it.supplier || "";
+  $("editQty").value = it.qty;
+  $("editCondition").querySelectorAll(".seg-btn").forEach((x) =>
+    x.classList.toggle("active", x.dataset.value === it.condition)
+  );
+  $("editHistWrap").hidden = true;
+  $("editHistList").innerHTML = "";
+  editModal.hidden = false;
+  loadEditHistory(id);
+}
+
+async function loadEditHistory(id) {
+  if (!db) return;
+  try {
+    const snap = await getDocs(
+      query(collection(db, EDIT_HISTORY), where("returnId", "==", id))
+    );
+    const rows = snap.docs
+      .map((d) => d.data())
+      .sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0));
+    if (!rows.length) return;
+    $("editHistList").innerHTML = rows
+      .map((h) => {
+        const when = h.at?.toDate ? h.at.toDate().toLocaleString() : "";
+        const changes = Object.keys(h.before || {})
+          .map((k) => `${escapeHtml(k)}: <b>${escapeHtml(h.before[k])}</b> → <b>${escapeHtml((h.after || {})[k])}</b>`)
+          .join("<br>");
+        return `<li class="hist-item">${changes}<br>by ${escapeHtml(h.by || "")} · ${escapeHtml(when)}</li>`;
+      })
+      .join("");
+    $("editHistWrap").hidden = false;
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function saveEdit() {
+  if (!canEdit() || !db || !editingId) return;
+  const it = findItem(editingId);
+  if (!it) return closeEdit();
+
+  const next = {
+    item: norm($("editItem").value),
+    supplier: norm($("editSupplier").value),
+    condition: editCondition,
+    qty: parseInt($("editQty").value, 10) || 0,
+  };
+  if (!next.item) return showToast("Item is required", "err");
+  if (!next.supplier) return showToast("Supplier is required", "err");
+  if (!next.condition) return showToast("Choose Good or Defective", "err");
+  if (next.qty < 1) return showToast("QTY must be at least 1", "err");
+
+  // Only the fields that actually changed.
+  const before = {};
+  const after = {};
+  for (const k of ["item", "supplier", "condition", "qty"]) {
+    if (String(it[k]) !== String(next[k])) {
+      before[k] = it[k];
+      after[k] = next[k];
+    }
+  }
+  if (!Object.keys(after).length) {
+    closeEdit();
+    return showToast("No changes", "ok");
+  }
+
+  const saveBtn = $("editSave");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving…";
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, RETURNS, editingId), {
+      ...after,
+      editedBy: currentUser.username,
+      editedAt: serverTimestamp(),
+      editCount: (it.editCount || 0) + 1,
+    });
+    const histRef = doc(collection(db, EDIT_HISTORY));
+    batch.set(histRef, {
+      returnId: editingId,
+      txnNo: it.txnNo || "",
+      before,
+      after,
+      by: currentUser.username,
+      at: serverTimestamp(),
+    });
+    await batch.commit();
+    // remember any new item/supplier names
+    rememberName(items, next.item);
+    rememberName(suppliers, next.supplier);
+    showToast("Changes saved ✓", "ok");
+    closeEdit();
+    await loadTransactions();
+  } catch (err) {
+    console.error(err);
+    showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Save failed", "err");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save changes";
+  }
+}
+
 // ---- SR tab (per-item) ------------------------------------------------------
 // An item is pending if it has no SR and its transaction has no DR. Each pending
 // item gets a checkbox (checked by default); one SR number is stamped onto the
@@ -445,11 +769,13 @@ function srCard(card, i) {
      </div>
      <ul class="sr-items">${rows}</ul>
      <div class="r-meta">${escapeHtml(fmtDate(g.date))}</div>
-     <div class="sr-add">
+     ${canEdit()
+        ? `<div class="sr-add">
        <input type="text" class="sr-input" placeholder="SR # *" autocomplete="off"
               autocapitalize="characters" spellcheck="false" enterkeyhint="done">
        <button type="button" class="sr-save" data-i="${i}">Save</button>
-     </div>
+     </div>`
+        : ""}
    </li>`;
 }
 
@@ -475,6 +801,7 @@ function renderSr() {
 srList.addEventListener("click", async (e) => {
   const btn = e.target.closest(".sr-save");
   if (!btn) return;
+  if (!canEdit()) return showToast("Log in to add SR numbers", "err");
   const card = srPending[+btn.dataset.i];
   if (!card || !db) return;
 
@@ -524,8 +851,29 @@ async function loadTransactions() {
       query(collection(db, RETURNS), orderBy("createdAt", "desc"), limit(HISTORY_MAX))
     );
     const groups = new Map();
+    deletedItems = [];
     snap.forEach((docSnap) => {
       const r = docSnap.data();
+      const it = {
+        id: docSnap.id,
+        txnNo: r.txnNo || "",
+        customer: r.customer,
+        date: r.date,
+        drNumber: r.drNumber || "",
+        item: r.item,
+        supplier: r.supplier || "",
+        condition: r.condition,
+        qty: r.qty,
+        sr: r.sr || "",
+        editCount: r.editCount || 0,
+        editedAt: r.editedAt || null,
+        editedBy: r.editedBy || "",
+        deletedBy: r.deletedBy || "",
+      };
+      if (r.deleted) {
+        deletedItems.push(it); // hidden from History/SR, shown in Settings
+        return;
+      }
       const key = r.txnNo || docSnap.id;
       if (!groups.has(key)) {
         groups.set(key, {
@@ -537,18 +885,12 @@ async function loadTransactions() {
           items: [],
         });
       }
-      groups.get(key).items.push({
-        id: docSnap.id,
-        item: r.item,
-        supplier: r.supplier || "",
-        condition: r.condition,
-        qty: r.qty,
-        sr: r.sr || "",
-      });
+      groups.get(key).items.push(it);
     });
     allTxns = [...groups.values()];
     renderHistory();
     renderSr();
+    if (isAdmin()) renderDeleted();
   } catch (err) {
     console.error(err);
     recentList.innerHTML = '<li class="empty">Could not load returns.</li>';
@@ -563,6 +905,10 @@ function fmtTxnNo(seq) {
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (!canInput()) {
+    showToast("Log in to add returns", "err");
+    return;
+  }
   if (!db) {
     showToast("Firebase isn’t configured yet", "err");
     return;
@@ -615,6 +961,7 @@ form.addEventListener("submit", async (e) => {
           supplier: it.supplier,
           drNumber,
           sr: "",
+          deleted: false,
           item: it.item,
           condition: it.condition,
           qty: it.qty,
@@ -735,5 +1082,7 @@ async function maintenanceCleanup() {
   location.hash = "history";
 }
 
-// Select the initial tab from the URL hash (after db is ready).
+// Apply the saved login (if any) to the UI, then route to the initial view.
+applyAuth();
+renderAccount();
 routeFromHash();

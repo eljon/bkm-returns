@@ -48,7 +48,7 @@
       min-height: 100vh;
     }
 
-    header { padding: 10px 4px 16px; }
+    header { padding: 10px 4px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     header h1 {
       margin: 0;
       font-size: 1.4rem;
@@ -100,6 +100,7 @@
     label .req { color: var(--accent); }
 
     input[type="text"],
+    input[type="password"],
     input[type="date"],
     input[type="number"] {
       width: 100%;
@@ -377,6 +378,105 @@
       border: 1.5px solid #fdba74;
     }
     .banner code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 5px; }
+
+    /* Header gear */
+    .gear {
+      flex: 0 0 auto;
+      width: 42px; height: 42px;
+      font-size: 1.15rem;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+    .gear:active { background: #eef2f7; }
+
+    /* Row action buttons (edit / delete / restore) */
+    .r-actions { display: flex; gap: 6px; margin-left: 4px; }
+    .mini-btn {
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .mini-btn.edit { color: var(--accent); border-color: rgba(2, 132, 199, 0.4); }
+    .mini-btn.del { color: var(--err); border-color: rgba(220, 38, 38, 0.35); }
+    .mini-btn.restore { color: var(--ok); border-color: rgba(22, 163, 74, 0.4); }
+    .edited-tag { color: var(--muted); font-size: 0.72rem; font-style: italic; }
+
+    /* Notices + settings cards */
+    .notice {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-size: 0.9rem;
+      margin-bottom: 14px;
+    }
+    .card-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .card-box h2 { margin: 0 0 12px; font-size: 1rem; }
+    .who { font-weight: 700; }
+    .role-pill {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      background: #e0e7ff;
+      color: #3730a3;
+      margin-left: 6px;
+    }
+    .login-form { display: flex; flex-direction: column; gap: 10px; }
+    #inputLock { display: none; }
+    body.view-only #inputLock { display: block; }
+
+    /* Edit modal */
+    .modal {
+      position: fixed; inset: 0; z-index: 60;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .modal[hidden] { display: none; }
+    .modal-card {
+      background: var(--bg);
+      width: 100%; max-width: 520px;
+      border-radius: 20px 20px 0 0;
+      padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+      max-height: 92vh; overflow-y: auto;
+    }
+    .modal-card h2 { margin: 0 0 4px; font-size: 1.1rem; }
+    .modal-card .sub { color: var(--muted); font-size: 0.82rem; margin: 0 0 14px; }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .btn-secondary {
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 15px;
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .hist-wrap { margin-top: 16px; }
+    .hist-wrap h3 { font-size: 0.85rem; color: var(--muted); margin: 0 0 8px; }
+    .hist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .hist-item { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; }
+    .hist-item b { color: var(--text); }
+
     .hidden { display: none; }
   </style>
 </head>
@@ -384,7 +484,8 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v3.5</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v3.6</span></h1>
+      <button type="button" class="gear" id="gearBtn" aria-label="Settings">⚙</button>
     </header>
 
     <nav class="tabs">
@@ -400,6 +501,9 @@
 
     <!-- INPUT TAB -->
     <section id="tab-input" class="tab-panel">
+      <div class="notice" id="inputLock">
+        You’re in view-only mode. Tap ⚙ to log in before adding returns.
+      </div>
       <form id="form" autocomplete="off">
         <div class="field">
           <label for="date">Date <span class="req">*</span></label>
@@ -446,6 +550,58 @@
         <li class="empty" id="recentEmpty">Loading…</li>
       </ul>
     </section>
+
+    <!-- SETTINGS TAB -->
+    <section id="tab-settings" class="tab-panel hidden">
+      <div class="card-box" id="accountBox"><!-- login / account status --></div>
+      <div class="card-box hidden" id="deletedBox">
+        <h2>Deleted entries</h2>
+        <ul id="deletedList" class="r-lines"><li class="empty">None.</li></ul>
+      </div>
+    </section>
+  </div>
+
+  <!-- Edit modal -->
+  <div class="modal" id="editModal" hidden>
+    <div class="modal-card">
+      <h2>Edit item</h2>
+      <p class="sub" id="editSub"></p>
+      <div class="field">
+        <div class="combo">
+          <input type="text" id="editItem" placeholder="Item *" autocapitalize="sentences" autocomplete="off">
+          <ul class="suggest" id="editItemSuggest" role="listbox" hidden></ul>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <div class="combo">
+          <input type="text" id="editSupplier" placeholder="Supplier *" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false">
+          <ul class="suggest" id="editSupplierSuggest" role="listbox" hidden></ul>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Condition <span class="req">*</span></label>
+        <div class="segment" id="editCondition" role="group" aria-label="Condition">
+          <button type="button" class="seg-btn" data-value="Good">Good</button>
+          <button type="button" class="seg-btn" data-value="Defective">Defective</button>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>QTY <span class="req">*</span></label>
+        <div class="qty">
+          <button type="button" class="qty-minus" id="editQtyMinus" aria-label="Decrease">−</button>
+          <input type="number" id="editQty" inputmode="numeric" min="1" step="1" value="1">
+          <button type="button" class="qty-plus" id="editQtyPlus" aria-label="Increase">+</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="editCancel">Cancel</button>
+        <button type="button" class="submit" id="editSave" style="margin-top:0">Save changes</button>
+      </div>
+      <div class="hist-wrap" id="editHistWrap" hidden>
+        <h3>Edit history</h3>
+        <ul class="hist-list" id="editHistList"></ul>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -495,7 +651,7 @@
   </template>
 
   <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
-  <script type="module" src="app.js?v=3.5"></script>
+  <script type="module" src="app.js?v=3.6"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

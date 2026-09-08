@@ -20,13 +20,16 @@ service cloud.firestore {
       // Allow creating a well-formed return.
       allow create: if isValidReturn(request.resource.data);
 
-      // The only allowed edit is stamping/changing the SR number; everything
-      // else stays immutable.
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sr'])
-        && request.resource.data.sr is string;
+      // Edits: only these fields may change (SR stamping, item edits, and the
+      // soft-delete / restore flag plus audit fields). Identity fields
+      // (txnNo, seq, createdAt) can never change. Roles are enforced in the app.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'customer', 'date', 'drNumber', 'supplier', 'item', 'condition', 'qty',
+        'sr', 'deleted', 'deletedBy', 'deletedAt', 'editedBy', 'editedAt', 'editCount'
+      ]);
 
       // Cleanup: only the early test records (transaction R-0010 and earlier)
-      // may be deleted. Once they're gone this rule permits nothing.
+      // may be hard-deleted. Once they're gone this rule permits nothing.
       allow delete: if (resource.data.seq is int || resource.data.seq is float)
         && resource.data.seq <= 10;
     }
@@ -50,6 +53,15 @@ service cloud.firestore {
     match /customers/{id} { allow read: if true; allow create: if isValidName(request.resource.data); allow update, delete: if false; }
     match /items/{id}     { allow read: if true; allow create: if isValidName(request.resource.data); allow update, delete: if false; }
     match /suppliers/{id} { allow read: if true; allow create: if isValidName(request.resource.data); allow update, delete: if false; }
+
+    // Append-only log of edits made to return records.
+    match /editHistory/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.returnId is string
+        && request.resource.data.by is string
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
 
     // Everything else is denied by default.
     match /{document=**} {
