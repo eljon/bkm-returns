@@ -489,14 +489,15 @@ function renderTxnCard(g) {
          </div>`
     )
     .join("");
-  const editBtn =
-    canEdit() && g.txnNo
-      ? `<button type="button" class="mini-btn edit edit-txn" data-txn="${escapeHtml(g.txnNo)}">Edit</button>`
-      : "";
+  const txnActions = [];
+  if (canEdit() && g.txnNo)
+    txnActions.push(`<button type="button" class="mini-btn edit edit-txn" data-txn="${escapeHtml(g.txnNo)}">Edit</button>`);
+  if (isAdmin() && g.txnNo)
+    txnActions.push(`<button type="button" class="mini-btn del del-txn" data-txn="${escapeHtml(g.txnNo)}">Delete</button>`);
   return `<li class="txn">
      <div class="r-txn-row">
        <span class="r-txn">${escapeHtml(g.txnNo || "—")}</span>
-       ${editBtn}
+       ${txnActions.length ? `<span class="r-actions">${txnActions.join("")}</span>` : ""}
      </div>
      <div class="r-top">
        <span class="r-cust">${escapeHtml(g.customer)}</span>
@@ -575,6 +576,8 @@ searchInput.addEventListener("input", renderHistory);
 recentList.addEventListener("click", (e) => {
   const etx = e.target.closest(".edit-txn");
   if (etx) return openTxnEdit(etx.dataset.txn);
+  const dtx = e.target.closest(".del-txn");
+  if (dtx) return softDeleteTxn(dtx.dataset.txn);
   const ed = e.target.closest(".edit-item");
   if (ed) return openEdit(ed.dataset.id);
   const del = e.target.closest(".del-item");
@@ -597,6 +600,30 @@ async function softDelete(id) {
       });
     });
     showToast("Item deleted", "ok");
+    await loadTransactions();
+  } catch (err) {
+    console.error(err);
+    showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Delete failed", "err");
+  }
+}
+
+async function softDeleteTxn(txnNo) {
+  if (!isAdmin() || !db) return;
+  const g = findGroup(txnNo);
+  if (!g) return;
+  const n = g.items.length;
+  if (!window.confirm(`Delete the entire transaction ${g.txnNo} (${n} item${n > 1 ? "s" : ""})?\n\nAll its items move to Settings → Deleted entries and can be restored.`)) return;
+  try {
+    const batch = writeBatch(db);
+    g.items.forEach((it) =>
+      batch.update(doc(db, RETURNS, it.id), {
+        deleted: true,
+        deletedBy: currentUser.username,
+        deletedAt: serverTimestamp(),
+      })
+    );
+    await batch.commit();
+    showToast(`Transaction ${g.txnNo} deleted`, "ok");
     await loadTransactions();
   } catch (err) {
     console.error(err);
