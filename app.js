@@ -520,9 +520,15 @@ function uniformSr(g) {
 // Every whitespace-separated term must match somewhere in the transaction (AND).
 function txnMatches(g, terms) {
   const parts = [g.customer, g.drNumber, g.txnNo];
-  for (const it of g.items) parts.push(it.item, it.supplier, it.sr);
+  for (const it of g.items) {
+    parts.push(it.item, it.supplier, it.sr);
+    if (it.sr) parts.push("sr " + it.sr); // so "sr100"/"sr-100"/"sr 100" all match
+  }
   const hay = parts.filter(Boolean).join(" ").toLowerCase();
-  return terms.every((t) => hay.includes(t));
+  const hayCompact = hay.replace(/[^a-z0-9]/g, ""); // ignore spaces/punctuation
+  return terms.every(
+    (t) => hay.includes(t) || hayCompact.includes(t.replace(/[^a-z0-9]/g, ""))
+  );
 }
 
 function renderHistory() {
