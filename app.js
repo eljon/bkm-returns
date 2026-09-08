@@ -497,8 +497,8 @@ function renderTxnCard(g) {
     )
     .join("");
   const txnActions = [];
-  if (canEdit() && g.txnNo)
-    txnActions.push(`<button type="button" class="mini-btn edit edit-txn" data-txn="${escapeHtml(g.txnNo)}">Edit</button>`);
+  if (canAddSr() && g.txnNo)
+    txnActions.push(`<button type="button" class="mini-btn edit edit-txn" data-txn="${escapeHtml(g.txnNo)}">${canEdit() ? "Edit" : "Edit SR"}</button>`);
   if (isAdmin() && g.txnNo)
     txnActions.push(`<button type="button" class="mini-btn del del-txn" data-txn="${escapeHtml(g.txnNo)}">Delete</button>`);
   return `<li class="txn">
@@ -842,11 +842,14 @@ function closeTxnEdit() {
 }
 
 function openTxnEdit(txnNo) {
-  if (!canEdit()) return;
+  if (!canAddSr()) return;
   const g = findGroup(txnNo);
   if (!g) return;
   editingTxn = txnNo;
+  const full = canEdit(); // sr-only users get the SR field alone
+  $("txnTitle").textContent = full ? "Edit transaction" : "Edit SR number";
   $("txnSub").textContent = `${g.txnNo} · ${g.items.length} item${g.items.length > 1 ? "s" : ""}`;
+  document.querySelectorAll("#txnModal .txn-full").forEach((el) => el.classList.toggle("hidden", !full));
   $("txnDate").value = g.date || "";
   $("txnCustomer").value = g.customer || "";
   $("txnDr").value = g.drNumber || "";
@@ -855,23 +858,25 @@ function openTxnEdit(txnNo) {
 }
 
 async function saveTxnEdit() {
-  if (!canEdit() || !db || !editingTxn) return;
+  if (!canAddSr() || !db || !editingTxn) return;
   const g = findGroup(editingTxn);
   if (!g) return closeTxnEdit();
 
-  const customer = norm($("txnCustomer").value);
-  const date = $("txnDate").value;
-  const drNumber = norm($("txnDr").value);
+  const full = canEdit(); // sr-only users can change the SR number only
   const srVal = $("txnSr").value.trim();
 
-  if (!date) return showToast("Date is required", "err");
-  if (!customer) return showToast("Customer is required", "err");
-
-  // Fields that apply to the whole transaction.
+  // Transaction-level fields (only editable by admin/user).
   const setFields = {};
-  if (customer !== g.customer) setFields.customer = customer;
-  if (date !== g.date) setFields.date = date;
-  if (drNumber !== g.drNumber) setFields.drNumber = drNumber;
+  if (full) {
+    const customer = norm($("txnCustomer").value);
+    const date = $("txnDate").value;
+    const drNumber = norm($("txnDr").value);
+    if (!date) return showToast("Date is required", "err");
+    if (!customer) return showToast("Customer is required", "err");
+    if (customer !== g.customer) setFields.customer = customer;
+    if (date !== g.date) setFields.date = date;
+    if (drNumber !== g.drNumber) setFields.drNumber = drNumber;
+  }
   const srChanged = srVal !== uniformSr(g);
 
   if (!Object.keys(setFields).length && !srChanged) {
@@ -906,8 +911,8 @@ async function saveTxnEdit() {
       });
     }
     await batch.commit();
-    if (setFields.customer) rememberName(customers, customer);
-    showToast("Transaction updated ✓", "ok");
+    if (setFields.customer) rememberName(customers, setFields.customer);
+    showToast(full ? "Transaction updated ✓" : "SR updated ✓", "ok");
     closeTxnEdit();
     await loadTransactions();
   } catch (err) {

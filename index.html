@@ -509,7 +509,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v4.2</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v4.3</span></h1>
       <button type="button" class="gear" id="gearBtn" aria-label="Settings">⚙</button>
     </header>
 
@@ -638,20 +638,20 @@
   <!-- Transaction edit modal -->
   <div class="modal" id="txnModal" hidden>
     <div class="modal-card">
-      <h2>Edit transaction</h2>
+      <h2 id="txnTitle">Edit transaction</h2>
       <p class="sub" id="txnSub"></p>
-      <div class="field">
+      <div class="field txn-full">
         <label for="txnDate">Date</label>
         <input type="date" id="txnDate">
       </div>
-      <div class="field" style="margin-top:12px">
+      <div class="field txn-full" style="margin-top:12px">
         <label for="txnCustomer">Customer <span class="req">*</span></label>
         <div class="combo">
           <input type="text" id="txnCustomer" placeholder="Customer *" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false">
           <ul class="suggest" id="txnCustomerSuggest" role="listbox" hidden></ul>
         </div>
       </div>
-      <div class="field" style="margin-top:12px">
+      <div class="field txn-full" style="margin-top:12px">
         <label for="txnDr">DR #</label>
         <input type="text" id="txnDr" placeholder="DR # (optional)" autocomplete="off">
       </div>
@@ -713,7 +713,7 @@
   </template>
 
   <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
-  <script type="module" src="app.js?v=4.2"></script>
+  <script type="module" src="app.js?v=4.3"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
