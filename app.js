@@ -531,12 +531,23 @@ function txnMatches(g, terms) {
   );
 }
 
+const activeFilters = new Set(); // "sr" and/or "dr"
+
+function passesFilters(g) {
+  if (activeFilters.has("sr") && !g.items.some((it) => it.sr)) return false;
+  if (activeFilters.has("dr") && !g.drNumber) return false;
+  return true;
+}
+
 function renderHistory() {
   const terms = (searchInput.value || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const list = terms.length ? allTxns.filter((g) => txnMatches(g, terms)) : allTxns;
+  const list = allTxns.filter(
+    (g) => passesFilters(g) && (!terms.length || txnMatches(g, terms))
+  );
 
   if (!list.length) {
-    recentList.innerHTML = `<li class="empty">${terms.length ? "No matching returns." : "No returns logged yet."}</li>`;
+    const filtering = terms.length || activeFilters.size;
+    recentList.innerHTML = `<li class="empty">${filtering ? "No matching returns." : "No returns logged yet."}</li>`;
     return;
   }
   const shown = list.slice(0, HISTORY_SHOW);
@@ -548,6 +559,17 @@ function renderHistory() {
 }
 
 searchInput.addEventListener("input", renderHistory);
+
+// History filter chips (With SR / With DR).
+[...document.querySelectorAll(".chip")].forEach((chip) =>
+  chip.addEventListener("click", () => {
+    const f = chip.dataset.filter;
+    if (activeFilters.has(f)) activeFilters.delete(f);
+    else activeFilters.add(f);
+    chip.classList.toggle("active", activeFilters.has(f));
+    renderHistory();
+  })
+);
 
 // Edit / delete actions on History rows.
 recentList.addEventListener("click", (e) => {

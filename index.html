@@ -265,6 +265,19 @@
 
     /* History + SR lists */
     #search { margin-bottom: 12px; }
+    .filters { display: flex; gap: 8px; margin-bottom: 12px; }
+    .chip {
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 15px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .chip.active { background: var(--grad); color: #fff; border-color: transparent; }
     #recentList, #srList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
     .txn { padding: 12px 14px; }
     .r-txn-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
@@ -496,7 +509,7 @@
   <div class="app">
     <header>
       <!-- Bump this version on each new set of requested changes. -->
-      <h1>BKM ITEM RETURNS <span class="version">v3.9</span></h1>
+      <h1>BKM ITEM RETURNS <span class="version">v4.0</span></h1>
       <button type="button" class="gear" id="gearBtn" aria-label="Settings">⚙</button>
     </header>
 
@@ -558,6 +571,10 @@
     <section id="tab-history" class="tab-panel hidden">
       <input type="text" id="search" placeholder="Search customer, supplier, item…"
              autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+      <div class="filters">
+        <button type="button" class="chip" data-filter="sr">With SR</button>
+        <button type="button" class="chip" data-filter="dr">With DR</button>
+      </div>
       <ul id="recentList">
         <li class="empty" id="recentEmpty">Loading…</li>
       </ul>
@@ -579,12 +596,14 @@
       <h2>Edit item</h2>
       <p class="sub" id="editSub"></p>
       <div class="field">
+        <label for="editItem">Item <span class="req">*</span></label>
         <div class="combo">
           <input type="text" id="editItem" placeholder="Item *" autocapitalize="sentences" autocomplete="off">
           <ul class="suggest" id="editItemSuggest" role="listbox" hidden></ul>
         </div>
       </div>
       <div class="field" style="margin-top:12px">
+        <label for="editSupplier">Supplier <span class="req">*</span></label>
         <div class="combo">
           <input type="text" id="editSupplier" placeholder="Supplier *" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false">
           <ul class="suggest" id="editSupplierSuggest" role="listbox" hidden></ul>
@@ -626,16 +645,19 @@
         <input type="date" id="txnDate">
       </div>
       <div class="field" style="margin-top:12px">
+        <label for="txnCustomer">Customer <span class="req">*</span></label>
         <div class="combo">
           <input type="text" id="txnCustomer" placeholder="Customer *" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false">
           <ul class="suggest" id="txnCustomerSuggest" role="listbox" hidden></ul>
         </div>
       </div>
       <div class="field" style="margin-top:12px">
+        <label for="txnDr">DR #</label>
         <input type="text" id="txnDr" placeholder="DR # (optional)" autocomplete="off">
       </div>
       <div class="field" style="margin-top:12px">
-        <input type="text" id="txnSr" placeholder="SR # (applies to all items)" autocapitalize="characters" autocomplete="off" spellcheck="false">
+        <label for="txnSr">SR # <span style="font-weight:500;color:var(--muted)">(applies to all items)</span></label>
+        <input type="text" id="txnSr" placeholder="SR #" autocapitalize="characters" autocomplete="off" spellcheck="false">
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-secondary" id="txnCancel">Cancel</button>
@@ -691,7 +713,7 @@
   </template>
 
   <!-- Bump ?v= together with the version tag so phones fetch fresh JS. -->
-  <script type="module" src="app.js?v=3.9"></script>
+  <script type="module" src="app.js?v=4.0"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
