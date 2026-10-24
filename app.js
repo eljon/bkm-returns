@@ -10,6 +10,7 @@ import {
   doc,
   addDoc,
   getDocs,
+  onSnapshot,
   query,
   where,
   orderBy,
@@ -289,8 +290,8 @@ function showTab(name) {
   if (!TAB_NAMES.includes(name)) name = "input";
   tabButtons.forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
   Object.entries(panels).forEach(([k, el]) => el.classList.toggle("hidden", k !== name));
-  if (name === "history" || name === "sr") loadTransactions();
-  if (name === "settings") { renderAccount(); if (isAdmin()) loadTransactions(); }
+  if (name === "history" || name === "sr") ensureTxnSubscription();
+  if (name === "settings") { renderAccount(); if (isAdmin()) ensureTxnSubscription(); }
 }
 
 // Hash-based routing: #sr / #history / #settings select views; links shareable.
@@ -614,13 +615,6 @@ searchInput.addEventListener("input", renderHistory);
   })
 );
 
-// Manual refresh: re-fetch transactions and name lists from Firestore.
-$("refreshBtn").addEventListener("click", async () => {
-  await loadTransactions(true);
-  [customers, items, suppliers].forEach((src) => loadNames(src));
-  showToast("Refreshed", "ok");
-});
-
 // Edit / delete actions on History rows.
 recentList.addEventListener("click", (e) => {
   const etx = e.target.closest(".edit-txn");
@@ -649,20 +643,6 @@ async function softDelete(id) {
       });
     });
     showToast("Item deleted", "ok");
-    // Move it to the deleted list in memory (no re-read).
-    for (const g of allTxns) {
-      const idx = g.items.findIndex((x) => x.id === id);
-      if (idx >= 0) {
-        const [removed] = g.items.splice(idx, 1);
-        removed.deleted = true;
-        removed.deletedBy = currentUser.username;
-        deletedItems.unshift(removed);
-        if (!g.items.length) allTxns = allTxns.filter((x) => x !== g);
-        break;
-      }
-    }
-    renderHistory();
-    renderDeleted();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Delete failed", "err");
@@ -686,14 +666,6 @@ async function softDeleteTxn(txnNo) {
     );
     await batch.commit();
     showToast(`Transaction ${g.txnNo} deleted`, "ok");
-    g.items.forEach((it) => {
-      it.deleted = true;
-      it.deletedBy = currentUser.username;
-      deletedItems.unshift(it);
-    });
-    allTxns = allTxns.filter((x) => x !== g);
-    renderHistory();
-    renderDeleted();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Delete failed", "err");
@@ -707,21 +679,6 @@ async function restoreItem(id) {
       tx.update(doc(db, RETURNS, id), { deleted: false });
     });
     showToast("Item restored", "ok");
-    // Move it back into the live transactions in memory (no re-read).
-    const idx = deletedItems.findIndex((x) => x.id === id);
-    if (idx >= 0) {
-      const it = deletedItems[idx];
-      it.deleted = false;
-      deletedItems.splice(idx, 1);
-      let g = findGroup(it.txnNo);
-      if (!g) {
-        g = { txnNo: it.txnNo, seq: 0, customer: it.customer, date: it.date, drNumber: it.drNumber, items: [] };
-        allTxns.unshift(g);
-      }
-      g.items.push(it);
-    }
-    renderHistory();
-    renderDeleted();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Restore failed", "err");
@@ -887,14 +844,8 @@ async function saveEdit() {
     // remember any new item/supplier names
     rememberName(items, next.item);
     rememberName(suppliers, next.supplier);
-    // Update the item in memory (no re-read).
-    Object.assign(it, after);
-    it.editedBy = currentUser.username;
-    it.editedAt = new Date();
-    it.editCount = (it.editCount || 0) + 1;
     showToast("Changes saved ✓", "ok");
     closeEdit();
-    renderHistory();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Save failed", "err");
@@ -993,22 +944,8 @@ async function saveTxnEdit() {
     }
     await batch.commit();
     if (setFields.customer) rememberName(customers, setFields.customer);
-    // Update memory (no re-read).
-    const commonAfter = { ...setFields };
-    if (srChanged) commonAfter.sr = srVal;
-    g.items.forEach((it) => {
-      Object.assign(it, commonAfter);
-      it.editedBy = currentUser.username;
-      it.editedAt = new Date();
-      it.editCount = (it.editCount || 0) + 1;
-    });
-    if ("customer" in setFields) g.customer = setFields.customer;
-    if ("date" in setFields) g.date = setFields.date;
-    if ("drNumber" in setFields) g.drNumber = setFields.drNumber;
     showToast(full ? "Transaction updated ✓" : "SR updated ✓", "ok");
     closeTxnEdit();
-    renderHistory();
-    renderSr();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Save failed", "err");
@@ -1098,13 +1035,7 @@ srList.addEventListener("click", async (e) => {
     const batch = writeBatch(db);
     chosen.forEach((id) => batch.update(doc(db, RETURNS, id), { sr }));
     await batch.commit();
-    // pendingItems are references into allTxns, so update them in memory.
-    card.pendingItems.forEach((it) => {
-      if (chosen.includes(it.id)) it.sr = sr;
-    });
     showToast(`SR added to ${chosen.length} item${chosen.length > 1 ? "s" : ""} ✓`, "ok");
-    renderSr();
-    renderHistory();
   } catch (err) {
     console.error(err);
     const msg =
@@ -1117,71 +1048,75 @@ srList.addEventListener("click", async (e) => {
   }
 });
 
-// ---- Load all transactions into memory (for SR + History) -------------------
-// Cached: fetched once per session; later tab opens re-render from memory.
-// Writes update memory in place, so Firestore is read only on first open or a
-// manual Refresh. Pass force=true to re-fetch.
-async function loadTransactions(force = false) {
-  if (!db) return;
-  if (txnsLoaded && !force) {
-    renderHistory();
-    renderSr();
-    if (isAdmin()) renderDeleted();
-    return;
+// ---- Realtime transactions (live for SR + History) --------------------------
+// Subscribe once; Firestore pushes changes live and only bills for documents
+// that actually change — so the views are always current (incl. other devices)
+// without re-reading everything or a manual refresh. Attached lazily the first
+// time History/SR/Settings is opened, then kept alive for the session.
+let txnUnsub = null;
+function ensureTxnSubscription() {
+  if (txnUnsub || !db) return;
+  if (!txnsLoaded) {
+    recentList.innerHTML = '<li class="empty">Loading…</li>';
+    srList.innerHTML = '<li class="empty">Loading…</li>';
   }
-  recentList.innerHTML = '<li class="empty">Loading…</li>';
-  srList.innerHTML = '<li class="empty">Loading…</li>';
-  try {
-    const snap = await getDocs(
-      query(collection(db, RETURNS), orderBy("createdAt", "desc"), limit(HISTORY_MAX))
-    );
-    const groups = new Map();
-    deletedItems = [];
-    snap.forEach((docSnap) => {
-      const r = docSnap.data();
-      const it = {
-        id: docSnap.id,
-        txnNo: r.txnNo || "",
-        customer: r.customer,
-        date: r.date,
-        drNumber: r.drNumber || "",
-        item: r.item,
-        supplier: r.supplier || "",
-        condition: r.condition,
-        qty: r.qty,
-        sr: r.sr || "",
-        editCount: r.editCount || 0,
-        editedAt: r.editedAt || null,
-        editedBy: r.editedBy || "",
-        deletedBy: r.deletedBy || "",
-      };
-      if (r.deleted) {
-        deletedItems.push(it); // hidden from History/SR, shown in Settings
-        return;
-      }
-      const key = r.txnNo || docSnap.id;
-      if (!groups.has(key)) {
-        groups.set(key, {
+  const q = query(collection(db, RETURNS), orderBy("createdAt", "desc"), limit(HISTORY_MAX));
+  txnUnsub = onSnapshot(
+    q,
+    (snap) => {
+      const groups = new Map();
+      deletedItems = [];
+      snap.forEach((docSnap) => {
+        const r = docSnap.data();
+        const it = {
+          id: docSnap.id,
           txnNo: r.txnNo || "",
-          seq: r.seq || 0,
           customer: r.customer,
           date: r.date,
           drNumber: r.drNumber || "",
-          items: [],
-        });
-      }
-      groups.get(key).items.push(it);
-    });
-    allTxns = [...groups.values()];
-    txnsLoaded = true;
-    renderHistory();
-    renderSr();
-    if (isAdmin()) renderDeleted();
-  } catch (err) {
-    console.error(err);
-    recentList.innerHTML = '<li class="empty">Could not load returns.</li>';
-    srList.innerHTML = '<li class="empty">Could not load returns.</li>';
-  }
+          item: r.item,
+          supplier: r.supplier || "",
+          condition: r.condition,
+          qty: r.qty,
+          sr: r.sr || "",
+          editCount: r.editCount || 0,
+          editedAt: r.editedAt || null,
+          editedBy: r.editedBy || "",
+          deletedBy: r.deletedBy || "",
+        };
+        if (r.deleted) {
+          deletedItems.push(it);
+          return;
+        }
+        const key = r.txnNo || docSnap.id;
+        if (!groups.has(key)) {
+          groups.set(key, {
+            txnNo: r.txnNo || "",
+            seq: r.seq || 0,
+            customer: r.customer,
+            date: r.date,
+            drNumber: r.drNumber || "",
+            items: [],
+          });
+        }
+        groups.get(key).items.push(it);
+      });
+      allTxns = [...groups.values()];
+      txnsLoaded = true;
+      renderHistory();
+      renderSr();
+      if (isAdmin()) renderDeleted();
+    },
+    (err) => {
+      console.error(err);
+      const msg =
+        err?.code === "resource-exhausted"
+          ? "Daily Firebase quota reached — please try later."
+          : "Could not load returns.";
+      recentList.innerHTML = `<li class="empty">${msg}</li>`;
+      srList.innerHTML = `<li class="empty">${msg}</li>`;
+    }
+  );
 }
 
 // ---- Submit -----------------------------------------------------------------
@@ -1268,34 +1203,6 @@ form.addEventListener("submit", async (e) => {
       rememberName(suppliers, it.supplier);
     });
 
-    // Keep History current with real doc ids — no extra read needed.
-    if (txnsLoaded) {
-      allTxns.unshift({
-        txnNo,
-        seq: result.seq,
-        customer,
-        date,
-        drNumber,
-        items: lineItems.map((it, idx) => ({
-          id: refs[idx].id,
-          txnNo,
-          customer,
-          date,
-          drNumber,
-          item: it.item,
-          supplier: it.supplier,
-          condition: it.condition,
-          qty: it.qty,
-          sr: "",
-          editCount: 0,
-          editedAt: null,
-          editedBy: "",
-          deletedBy: "",
-        })),
-      });
-      renderHistory();
-    }
-
     resetForm();
   } catch (err) {
     console.error(err);
@@ -1322,16 +1229,21 @@ function resetForm() {
 // clear every SR number. Guarded by a confirm; requires the delete rule.
 async function maintenanceCleanup() {
   if (!db) return;
-  await loadTransactions(true);
 
   const delIds = [];
   const clrIds = [];
-  for (const g of allTxns) {
-    const del = g.seq && g.seq <= 10;
-    for (const it of g.items) {
-      if (del) delIds.push(it.id);
-      else if (it.sr) clrIds.push(it.id);
-    }
+  try {
+    const snap = await getDocs(query(collection(db, RETURNS), limit(HISTORY_MAX)));
+    snap.forEach((docSnap) => {
+      const r = docSnap.data();
+      const seq = r.seq || 0;
+      if (seq && seq <= 10) delIds.push(docSnap.id);
+      else if (r.sr) clrIds.push(docSnap.id);
+    });
+  } catch (err) {
+    console.error(err);
+    window.alert("Could not read records: " + (err?.code || err?.message));
+    return;
   }
 
   const ok = window.confirm(
@@ -1377,7 +1289,6 @@ async function maintenanceCleanup() {
     msg += `\n\nBlocked: ${problems.join("; ")}.\nMake sure the updated Firestore rules (with the delete line) are published, then reopen #cleanup.`;
   }
   window.alert(msg);
-  txnsLoaded = false; // force a fresh load after cleanup
   location.hash = "history";
 }
 
