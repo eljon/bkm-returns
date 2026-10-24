@@ -99,9 +99,9 @@ function fmtDate(value) {
 // ---- Suggestion sources (in-memory) -----------------------------------------
 // Each source: { coll, names[], set }. `names` drives suggestions; `set` holds
 // lowercased keys for dedup. Customers start from the bundled base list.
-const customers = { coll: "customers", names: CUSTOMERS.slice(), set: new Set(CUSTOMERS.map(nkey)) };
-const items = { coll: "items", names: [], set: new Set() };
-const suppliers = { coll: "suppliers", names: [], set: new Set() };
+const customers = { coll: "customers", base: new Set(CUSTOMERS.map(nkey)), names: CUSTOMERS.slice(), set: new Set(CUSTOMERS.map(nkey)) };
+const items = { coll: "items", base: new Set(), names: [], set: new Set() };
+const suppliers = { coll: "suppliers", base: new Set(), names: [], set: new Set() };
 
 const SUGGEST_MAX = 10;
 
@@ -404,9 +404,40 @@ async function loadNames(src) {
       }
     });
     if (added) src.names.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    saveNamesToCache(src);
   } catch (err) {
     console.error(err);
   }
+}
+
+// Cache the Firestore-sourced names in the browser so we don't re-read those
+// collections on every launch (big reads savings on the free tier).
+const NAMES_TTL = 6 * 60 * 60 * 1000; // re-fetch at most every 6 hours
+function nameCacheKey(src) { return "bkmNames_" + src.coll; }
+function loadNamesFromCache(src) {
+  try {
+    const raw = localStorage.getItem(nameCacheKey(src));
+    if (!raw) return 0;
+    const obj = JSON.parse(raw);
+    let added = false;
+    (obj.names || []).forEach((n) => {
+      if (n && !src.set.has(nkey(n))) {
+        src.set.add(nkey(n));
+        src.names.push(n);
+        added = true;
+      }
+    });
+    if (added) src.names.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    return obj.t || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+function saveNamesToCache(src) {
+  try {
+    const extra = src.names.filter((n) => !src.base.has(nkey(n))); // skip bundled base
+    localStorage.setItem(nameCacheKey(src), JSON.stringify({ t: Date.now(), names: extra }));
+  } catch (e) {}
 }
 
 // Add a newly-seen name to memory (instant) and share it via Firestore.
@@ -416,6 +447,7 @@ async function rememberName(src, name) {
   src.set.add(nkey(n));
   src.names.push(n);
   src.names.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  saveNamesToCache(src);
   if (!db) return;
   try {
     await addDoc(collection(db, src.coll), { name: n, createdAt: serverTimestamp() });
@@ -424,9 +456,11 @@ async function rememberName(src, name) {
   }
 }
 
-loadNames(customers);
-loadNames(items);
-loadNames(suppliers);
+// Load names from cache instantly; only hit Firestore when the cache is stale.
+[customers, items, suppliers].forEach((src) => {
+  const cachedAt = loadNamesFromCache(src);
+  if (!cachedAt || Date.now() - cachedAt > NAMES_TTL) loadNames(src);
+});
 
 // ---- Transactions (shared by SR + History tabs) -----------------------------
 const HISTORY_MAX = 1000; // documents pulled into memory
@@ -434,6 +468,7 @@ const HISTORY_SHOW = 50; // transactions rendered at once in History
 let allTxns = []; // grouped transactions, newest first (in memory)
 let srPending = []; // transactions currently shown in the SR tab
 let deletedItems = []; // soft-deleted items, shown in Settings (admin)
+let txnsLoaded = false; // whether allTxns has been fetched this session
 
 function findItem(id) {
   for (const g of allTxns) {
@@ -569,7 +604,7 @@ function renderHistory() {
 searchInput.addEventListener("input", renderHistory);
 
 // History filter chips (With SR / With DR).
-[...document.querySelectorAll(".chip")].forEach((chip) =>
+[...document.querySelectorAll(".chip[data-filter]")].forEach((chip) =>
   chip.addEventListener("click", () => {
     const f = chip.dataset.filter;
     if (activeFilters.has(f)) activeFilters.delete(f);
@@ -578,6 +613,13 @@ searchInput.addEventListener("input", renderHistory);
     renderHistory();
   })
 );
+
+// Manual refresh: re-fetch transactions and name lists from Firestore.
+$("refreshBtn").addEventListener("click", async () => {
+  await loadTransactions(true);
+  [customers, items, suppliers].forEach((src) => loadNames(src));
+  showToast("Refreshed", "ok");
+});
 
 // Edit / delete actions on History rows.
 recentList.addEventListener("click", (e) => {
@@ -607,7 +649,20 @@ async function softDelete(id) {
       });
     });
     showToast("Item deleted", "ok");
-    await loadTransactions();
+    // Move it to the deleted list in memory (no re-read).
+    for (const g of allTxns) {
+      const idx = g.items.findIndex((x) => x.id === id);
+      if (idx >= 0) {
+        const [removed] = g.items.splice(idx, 1);
+        removed.deleted = true;
+        removed.deletedBy = currentUser.username;
+        deletedItems.unshift(removed);
+        if (!g.items.length) allTxns = allTxns.filter((x) => x !== g);
+        break;
+      }
+    }
+    renderHistory();
+    renderDeleted();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Delete failed", "err");
@@ -631,7 +686,14 @@ async function softDeleteTxn(txnNo) {
     );
     await batch.commit();
     showToast(`Transaction ${g.txnNo} deleted`, "ok");
-    await loadTransactions();
+    g.items.forEach((it) => {
+      it.deleted = true;
+      it.deletedBy = currentUser.username;
+      deletedItems.unshift(it);
+    });
+    allTxns = allTxns.filter((x) => x !== g);
+    renderHistory();
+    renderDeleted();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Delete failed", "err");
@@ -645,7 +707,21 @@ async function restoreItem(id) {
       tx.update(doc(db, RETURNS, id), { deleted: false });
     });
     showToast("Item restored", "ok");
-    await loadTransactions();
+    // Move it back into the live transactions in memory (no re-read).
+    const idx = deletedItems.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      const it = deletedItems[idx];
+      it.deleted = false;
+      deletedItems.splice(idx, 1);
+      let g = findGroup(it.txnNo);
+      if (!g) {
+        g = { txnNo: it.txnNo, seq: 0, customer: it.customer, date: it.date, drNumber: it.drNumber, items: [] };
+        allTxns.unshift(g);
+      }
+      g.items.push(it);
+    }
+    renderHistory();
+    renderDeleted();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Restore failed", "err");
@@ -811,9 +887,14 @@ async function saveEdit() {
     // remember any new item/supplier names
     rememberName(items, next.item);
     rememberName(suppliers, next.supplier);
+    // Update the item in memory (no re-read).
+    Object.assign(it, after);
+    it.editedBy = currentUser.username;
+    it.editedAt = new Date();
+    it.editCount = (it.editCount || 0) + 1;
     showToast("Changes saved ✓", "ok");
     closeEdit();
-    await loadTransactions();
+    renderHistory();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Save failed", "err");
@@ -912,9 +993,22 @@ async function saveTxnEdit() {
     }
     await batch.commit();
     if (setFields.customer) rememberName(customers, setFields.customer);
+    // Update memory (no re-read).
+    const commonAfter = { ...setFields };
+    if (srChanged) commonAfter.sr = srVal;
+    g.items.forEach((it) => {
+      Object.assign(it, commonAfter);
+      it.editedBy = currentUser.username;
+      it.editedAt = new Date();
+      it.editCount = (it.editCount || 0) + 1;
+    });
+    if ("customer" in setFields) g.customer = setFields.customer;
+    if ("date" in setFields) g.date = setFields.date;
+    if ("drNumber" in setFields) g.drNumber = setFields.drNumber;
     showToast(full ? "Transaction updated ✓" : "SR updated ✓", "ok");
     closeTxnEdit();
-    await loadTransactions();
+    renderHistory();
+    renderSr();
   } catch (err) {
     console.error(err);
     showToast(err?.code === "permission-denied" ? "Blocked — re-publish the Firestore rules" : "Save failed", "err");
@@ -1024,8 +1118,17 @@ srList.addEventListener("click", async (e) => {
 });
 
 // ---- Load all transactions into memory (for SR + History) -------------------
-async function loadTransactions() {
+// Cached: fetched once per session; later tab opens re-render from memory.
+// Writes update memory in place, so Firestore is read only on first open or a
+// manual Refresh. Pass force=true to re-fetch.
+async function loadTransactions(force = false) {
   if (!db) return;
+  if (txnsLoaded && !force) {
+    renderHistory();
+    renderSr();
+    if (isAdmin()) renderDeleted();
+    return;
+  }
   recentList.innerHTML = '<li class="empty">Loading…</li>';
   srList.innerHTML = '<li class="empty">Loading…</li>';
   try {
@@ -1070,6 +1173,7 @@ async function loadTransactions() {
       groups.get(key).items.push(it);
     });
     allTxns = [...groups.values()];
+    txnsLoaded = true;
     renderHistory();
     renderSr();
     if (isAdmin()) renderDeleted();
@@ -1126,16 +1230,17 @@ form.addEventListener("submit", async (e) => {
 
   try {
     // Bump the sequential counter and write every line item atomically.
+    // Refs are created up front so their ids are stable across any retry.
     const counterRef = doc(db, "counters", "returns");
-    const txnNo = await runTransaction(db, async (tx) => {
+    const refs = lineItems.map(() => doc(collection(db, RETURNS)));
+    const result = await runTransaction(db, async (tx) => {
       const snap = await tx.get(counterRef);
       const next = (snap.exists() ? snap.data().current || 0 : 0) + 1;
       tx.set(counterRef, { current: next });
 
       const no = fmtTxnNo(next);
-      lineItems.forEach((it) => {
-        const ref = doc(collection(db, RETURNS));
-        tx.set(ref, {
+      lineItems.forEach((it, idx) => {
+        tx.set(refs[idx], {
           txnNo: no,
           seq: next,
           date,
@@ -1150,8 +1255,9 @@ form.addEventListener("submit", async (e) => {
           createdAt: serverTimestamp(),
         });
       });
-      return no;
+      return { no, seq: next };
     });
+    const txnNo = result.no;
 
     showToast(`Saved ${lineItems.length} item${lineItems.length > 1 ? "s" : ""} ✓  ${txnNo}`, "ok");
 
@@ -1162,23 +1268,33 @@ form.addEventListener("submit", async (e) => {
       rememberName(suppliers, it.supplier);
     });
 
-    // Keep History current without another read: prepend the new transaction.
-    // Item ids are empty here; opening the SR/History tab reloads real doc ids.
-    allTxns.unshift({
-      txnNo,
-      customer,
-      date,
-      drNumber,
-      items: lineItems.map((it) => ({
-        id: "",
-        item: it.item,
-        supplier: it.supplier,
-        condition: it.condition,
-        qty: it.qty,
-        sr: "",
-      })),
-    });
-    renderHistory();
+    // Keep History current with real doc ids — no extra read needed.
+    if (txnsLoaded) {
+      allTxns.unshift({
+        txnNo,
+        seq: result.seq,
+        customer,
+        date,
+        drNumber,
+        items: lineItems.map((it, idx) => ({
+          id: refs[idx].id,
+          txnNo,
+          customer,
+          date,
+          drNumber,
+          item: it.item,
+          supplier: it.supplier,
+          condition: it.condition,
+          qty: it.qty,
+          sr: "",
+          editCount: 0,
+          editedAt: null,
+          editedBy: "",
+          deletedBy: "",
+        })),
+      });
+      renderHistory();
+    }
 
     resetForm();
   } catch (err) {
@@ -1206,7 +1322,7 @@ function resetForm() {
 // clear every SR number. Guarded by a confirm; requires the delete rule.
 async function maintenanceCleanup() {
   if (!db) return;
-  await loadTransactions();
+  await loadTransactions(true);
 
   const delIds = [];
   const clrIds = [];
@@ -1261,6 +1377,7 @@ async function maintenanceCleanup() {
     msg += `\n\nBlocked: ${problems.join("; ")}.\nMake sure the updated Firestore rules (with the delete line) are published, then reopen #cleanup.`;
   }
   window.alert(msg);
+  txnsLoaded = false; // force a fresh load after cleanup
   location.hash = "history";
 }
 
